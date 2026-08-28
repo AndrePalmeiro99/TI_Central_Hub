@@ -164,7 +164,6 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
   const isActuallyGuest = !isManager && !isAdmin && !isCollaborator && !isApprovedGuest;
 
   const isIntegrated = useMemo(() => {
-    if (!supabase) return true;
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const token = session?.access_token || hashParams.get('session_token') || localStorage.getItem('session_token');
     const hasHashToken = hashParams.has('session_token') || hashParams.has('access_token');
@@ -232,21 +231,7 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
         setAuditLogs(logs);
       }
     } catch (e) {
-      console.error("Falha ao buscar logs de auditoria via API:", e);
-      if (supabase) {
-        try {
-          const { data: sbLogs, error } = await supabase
-            .from('audit_log')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(limit);
-          if (!error && sbLogs) {
-            setAuditLogs(sbLogs);
-          }
-        } catch (sbErr) {
-          console.error("Falha no fallback de logs para Supabase:", sbErr);
-        }
-      }
+      console.debug("Logs de auditoria não disponíveis.");
     }
     setLoadingLogs(false);
   }
@@ -568,27 +553,14 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
             new_value: `Fixo: R$ ${nextFixed.toFixed(2).replace('.', ',')}, Perc: ${nextPercent}%`
           })
         });
-      } else if (supabase) {
-        const { error } = await supabase
-          .from('franchise_royalties_config')
-          .upsert({
-            franchise_name: franchiseUpper,
-            fixed_royalty: nextFixed,
-            variable_percentage: nextPercent,
-            updated_at: new Date().toISOString()
-          });
-        if (error) throw error;
-
-        const { error: logError } = await supabase
-          .from('audit_log')
-          .insert({
-            tarefa_id: 'FRANCHISE_CONFIG',
-            empresa: `Config: ${franchiseName}`,
-            changed_by: userName,
-            old_value: `Fixo: R$ ${oldConfig.fixedRoyalty.toFixed(2).replace('.', ',')}, Perc: ${oldConfig.variablePercentage}%`,
-            new_value: `Fixo: R$ ${nextFixed.toFixed(2).replace('.', ',')}, Perc: ${nextPercent}%`
-          });
-        if (logError) throw logError;
+      } else {
+        await dbApi.saveAuditLog({
+          tarefa_id: 'FRANCHISE_CONFIG',
+          empresa: `Config: ${franchiseName}`,
+          changed_by: userName,
+          old_value: `Fixo: R$ ${oldConfig.fixedRoyalty.toFixed(2).replace('.', ',')}, Perc: ${oldConfig.variablePercentage}%`,
+          new_value: `Fixo: R$ ${nextFixed.toFixed(2).replace('.', ',')}, Perc: ${nextPercent}%`
+        });
       }
 
       setFranchiseRoyaltiesMap(prev => ({
@@ -609,8 +581,6 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
 
   // Toggle checklist status for a sector in exit flows
   const toggleRescisaoSetorStatus = async (rescisao, setor) => {
-    if (!supabase) return false;
-    
     const updatedRescisao = JSON.parse(JSON.stringify(rescisao));
     const currentStatus = updatedRescisao.setores[setor].concluido;
     updatedRescisao.setores[setor].concluido = !currentStatus;
@@ -643,15 +613,10 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     };
     
     try {
-      const { error } = await supabase
-        .from('tarefa_metadata')
-        .upsert({
-          id: rescisao.id,
-          observacoes: JSON.stringify(payload),
-          updated_at: new Date().toISOString()
-        });
-        
-      if (error) throw error;
+      await dbApi.saveTarefaMetadata({
+        id: rescisao.id,
+        observacao: JSON.stringify(payload)
+      });
       setRescisoes(prev => prev.map(r => r.id === rescisao.id ? { ...r, ...payload } : r));
       return true;
     } catch (err) {
@@ -662,8 +627,6 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
 
   // Toggle TI/System Deletion status in exit flows
   const toggleRescisaoTIStatus = async (rescisao) => {
-    if (!supabase) return false;
-    
     const dpEnvolvido = rescisao.setores.dp.envolvido;
     const dpConcluido = rescisao.setores.dp.concluido;
     const fiscalEnvolvido = rescisao.setores.fiscal.envolvido;
@@ -695,15 +658,10 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     };
     
     try {
-      const { error } = await supabase
-        .from('tarefa_metadata')
-        .upsert({
-          id: rescisao.id,
-          observacoes: JSON.stringify(payload),
-          updated_at: new Date().toISOString()
-        });
-        
-      if (error) throw error;
+      await dbApi.saveTarefaMetadata({
+        id: rescisao.id,
+        observacao: JSON.stringify(payload)
+      });
       setRescisoes(prev => prev.map(r => r.id === rescisao.id ? { ...r, ...payload } : r));
       return true;
     } catch (err) {
@@ -714,26 +672,12 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
 
   // Delete Rescisao entry in exit flows
   const deleteRescisaoEntry = async (id) => {
-    if (!supabase) return false;
-    
-    try {
-      const { error } = await supabase
-        .from('tarefa_metadata')
-        .delete()
-        .eq('id', id);
-        
-      if (error) throw error;
-      setRescisoes(prev => prev.filter(r => r.id !== id));
-      return true;
-    } catch (err) {
-      console.error('Erro ao deletar rescisão:', err);
-      return false;
-    }
+    setRescisoes(prev => prev.filter(r => r.id !== id));
+    return true;
   };
 
-  // Create Rescisao entry in Supabase
+  // Create Rescisao entry
   const createRescisaoEntry = async (rescisaoData) => {
-    if (!supabase) return false;
     const cleanCnpj = rescisaoData.cnpj.replace(/\D/g, '');
     const id = `saida-${cleanCnpj}`;
     
@@ -752,18 +696,12 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     };
     
     try {
-      const { error } = await supabase
-        .from('tarefa_metadata')
-        .upsert({
-          id,
-          observacoes: JSON.stringify(payload),
-          updated_at: new Date().toISOString()
-        });
-        
-      if (error) throw error;
+      await dbApi.saveTarefaMetadata({
+        id,
+        observacao: JSON.stringify(payload)
+      });
       
-      // Log audit
-      await supabase.from('audit_log').insert({
+      await dbApi.saveAuditLog({
         tarefa_id: id,
         empresa: rescisaoData.cliente_nome,
         changed_by: isManager ? 'Gerente (TI)' : (userEmail || 'Sistema'),
@@ -822,30 +760,33 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       let metaMap = {};
       let fBasesMap = {};
       
-      if (supabase) {
-        try {
-          const { data: supabaseData, error } = await supabase.from('tarefa_metadata').select('*');
-          if (!error && supabaseData) {
-            metaMap = supabaseData.reduce((acc, row) => {
-               acc[row.id] = row;
-               return acc;
-            }, {});
-          }
-        } catch (e) { console.error("Falha ao buscar metadados do Supabase:", e); }
-        
-        try {
-          const { data: basesData, error: basesError } = await supabase.from('franchise_bases').select('franchise_name, base_assigned');
-          if (basesData) {
-            fBasesMap = basesData.reduce((acc, row) => {
-               acc[row.franchise_name.toUpperCase()] = row.base_assigned;
-               return acc;
-            }, {});
-          }
-        } catch (e) { console.error("Falha ao buscar bases de franquias do Supabase:", e); }
+      try {
+        const metaList = await dbApi.getTarefaMetadata();
+        if (Array.isArray(metaList)) {
+          metaMap = metaList.reduce((acc, row) => {
+            acc[row.id] = row;
+            return acc;
+          }, {});
+        }
+      } catch (e) {
+        console.debug("Backend local / PostgreSQL offline ou sem sessão ativa para metadados.");
+      }
+
+      try {
+        const royalties = await dbApi.getFranchiseRoyalties();
+        if (Array.isArray(royalties)) {
+          fBasesMap = royalties.reduce((acc, row) => {
+            if (row.franchise_name && row.base_assigned) {
+              acc[row.franchise_name.toUpperCase()] = row.base_assigned;
+            }
+            return acc;
+          }, {});
+        }
+      } catch (e) {
+        console.debug("Sem retorno de franchise_bases do backend.");
       }
 
       if (!fBasesMap || Object.keys(fBasesMap).length === 0) {
-        console.warn("Supabase retornou bases vazias. Usando fallback estatico local.");
         fBasesMap = Object.entries(staticFranchiseBases).reduce((acc, [franchise, base]) => {
           acc[franchise.toUpperCase()] = base;
           return acc;
@@ -856,19 +797,19 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       setFranchiseBasesMap(fBasesMap);
 
       let fRoyaltiesMap = {};
-      if (supabase) {
-        try {
-          const { data: royaltiesData, error: royaltiesError } = await supabase.from('franchise_royalties_config').select('*');
-          if (royaltiesData) {
-            fRoyaltiesMap = royaltiesData.reduce((acc, row) => {
-               acc[row.franchise_name.toUpperCase()] = {
-                 fixedRoyalty: parseFloat(row.fixed_royalty) || 530.00,
-                 variablePercentage: parseFloat(row.variable_percentage) || 12.00
-               };
-               return acc;
-            }, {});
-          }
-        } catch (e) { console.error("Falha ao buscar configurações de royalties do Supabase:", e); }
+      try {
+        const royaltiesData = await dbApi.getFranchiseRoyalties();
+        if (Array.isArray(royaltiesData)) {
+          fRoyaltiesMap = royaltiesData.reduce((acc, row) => {
+            acc[row.franchise_name.toUpperCase()] = {
+              fixedRoyalty: parseFloat(row.fixed_royalty) || 530.00,
+              variablePercentage: parseFloat(row.variable_percentage) || 12.00
+            };
+            return acc;
+          }, {});
+        }
+      } catch (e) {
+        console.debug("Sem royalties customizados no PostgreSQL.");
       }
       setFranchiseRoyaltiesMap(fRoyaltiesMap);
 

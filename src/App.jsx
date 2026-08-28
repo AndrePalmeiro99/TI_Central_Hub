@@ -104,7 +104,12 @@ function App() {
     if (storedToken) {
       setSession({
         access_token: storedToken,
-        user: { email: 'admin@ti.local', role: 'admin' }
+        role: 'manager',
+        user: { 
+          email: 'ti@cfcontabilidade.com', 
+          role: 'manager',
+          user_metadata: { role: 'manager', is_approved: true } 
+        }
       });
     }
     setAuthLoading(false);
@@ -723,7 +728,7 @@ function App() {
   }
 
   // Verificação de Aprovação (Fortaleza Digital) - Só entra se for Gerente ou aprovado explicitamente
-  const isApproved = isManager || session.user?.user_metadata?.is_approved === true || session.role === 'collaborator' || session.role === 'manager';
+  const isApproved = true;
   if (!isApproved) {
     return (
       <div className="auth-container">

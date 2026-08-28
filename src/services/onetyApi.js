@@ -1,5 +1,3 @@
-import { supabase } from './supabase';
-
 const ONETY_API_KEY = import.meta.env.VITE_ONETY_API_KEY || '';
 
 /**
@@ -102,20 +100,6 @@ export const fetchOnetySaidas = async () => {
  * @returns {Promise<Array>} Lista de transbordos
  */
 export const fetchOnetyTransbordos = async () => {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.rpc('fetch_onety_transbordos');
-      if (!error && data) {
-        return data;
-      }
-      if (error) {
-        console.warn('Erro retornado pela RPC de transbordos do Supabase:', error);
-      }
-    } catch (e) {
-      console.warn('Falha ao buscar transbordos via Supabase RPC, tentando fallback direto:', e);
-    }
-  }
-
   try {
     return await fetchWithFallback('/api/transbordos', 'central-tecnologia/dashboard-externo/transbordos');
   } catch (error) {

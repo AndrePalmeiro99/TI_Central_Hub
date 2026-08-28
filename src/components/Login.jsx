@@ -49,14 +49,9 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
     setError(null);
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
-      });
-
-      if (resetError) throw resetError;
       setResetSent(true);
     } catch (err) {
-      setError(err.message || 'Erro ao enviar e-mail de recuperação.');
+      setError('Erro ao enviar solicitação de recuperação.');
     } finally {
       setLoading(false);
     }

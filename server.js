@@ -195,7 +195,7 @@ app.get('/api/franchise-royalties', authenticateToken, async (req, res) => {
 // Servir frontend compilado em produção
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));
-app.get('*', (req, res) => {
+app.get('{*path}', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'Endpoint não encontrado.' });
   }

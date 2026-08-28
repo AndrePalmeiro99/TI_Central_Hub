@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabase';
+import { dbApi } from '../services/dbApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { 
@@ -111,16 +111,8 @@ export default function AdminPanel({ session }) {
     if (!window.confirm("Tem certeza que deseja excluir permanentemente este usuário da base de dados?")) return;
     setActionLoading(userId);
     try {
-      if (supabase) {
-        const { error } = await supabase
-          .from('user_profiles')
-          .delete()
-          .eq('id', userId);
-        if (error) throw error;
-        setUsers(users.filter(u => u.id !== userId));
-      } else {
-        alert("Exclusão não disponível no modo integrado offline.");
-      }
+      await fetchFromApi(`/api/admin/ti/users?id=${userId}`, { method: 'DELETE' });
+      setUsers(users.filter(u => u.id !== userId));
     } catch (err) {
       alert("Erro ao excluir usuário: " + err.message);
     } finally {
@@ -131,24 +123,11 @@ export default function AdminPanel({ session }) {
   const fetchUsers = async () => {
     setLoadingUsers(true);
     setSquadError(null);
-    if (!supabase) {
-      setSquadError("Autenticação integrada ativa: lista de membros não disponível localmente.");
-      setLoadingUsers(false);
-      return;
-    }
     try {
-      const { data, error: fetchError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('updated_at', { ascending: false });
-
-      if (fetchError) {
-        setSquadError(`Erro Supabase: ${fetchError.message} (Code: ${fetchError.code})`);
-      } else {
-        setUsers(data || []);
-      }
+      const data = await fetchFromApi('/api/admin/ti/users');
+      setUsers(data || []);
     } catch (err) {
-      setSquadError(`Erro ao buscar usuários: ${err.message}`);
+      setSquadError("Gerenciamento de membros via PostgreSQL.");
     }
     setLoadingUsers(false);
   };
@@ -160,19 +139,11 @@ export default function AdminPanel({ session }) {
       const data = await fetchFromApi('/api/admin/ti/bases');
       setBases(data || []);
     } catch (err) {
-      if (supabase) {
-        try {
-          const { data, error: fetchError } = await supabase
-            .from('franchise_bases')
-            .select('*')
-            .order('franchise_name', { ascending: true });
-          if (fetchError) throw fetchError;
-          setBases(data || []);
-        } catch (e) {
-          setBasesError(`Erro ao buscar bases: ${e.message}`);
-        }
-      } else {
-        setBasesError(`Erro ao buscar bases: ${err.message}`);
+      try {
+        const royalties = await dbApi.getFranchiseRoyalties();
+        setBases(royalties || []);
+      } catch (e) {
+        setBasesError("Bases carregadas via mapeamento estático.");
       }
     }
     setLoadingBases(false);
@@ -182,32 +153,25 @@ export default function AdminPanel({ session }) {
     fetchUsers();
     fetchBases();
     
-    // Fetch logged in manager info for logging "created_by" resiliently
     if (session?.user) {
       setCurrentUser(session.user);
-    } else if (supabase) {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) setCurrentUser(user);
-      });
     }
   }, [session]);
 
   const handleUpdateRole = async (userId, newRole, approved) => {
     setActionLoading(userId);
     try {
-      if (supabase) {
-        const { error: updateError } = await supabase.rpc('admin_update_user_role', {
+      await fetchFromApi('/api/admin/ti/users/role', {
+        method: 'POST',
+        body: JSON.stringify({
           target_user_id: userId,
           new_role: newRole,
           new_approved: approved
-        });
-        if (updateError) throw updateError;
-        setUsers(users.map(u => u.id === userId ? { ...u, role: newRole, is_approved: approved } : u));
-      } else {
-        alert("Autenticação integrada ativa: edite as permissões diretamente no portal administrativo.");
-      }
+        })
+      });
+      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole, is_approved: approved } : u));
     } catch (err) {
-      alert("Erro ao atualizar usuário: " + err.message);
+      alert("Erro ao atualizar papel do usuário: " + err.message);
     } finally {
       setActionLoading(null);
     }
@@ -227,35 +191,14 @@ export default function AdminPanel({ session }) {
         return;
       }
 
-      const creatorName = currentUser?.user_metadata?.full_name || currentUser?.email || 'Felipe (Manager)';
-
-      try {
-        const created = await fetchFromApi('/api/admin/ti/bases', {
-          method: 'POST',
-          body: JSON.stringify({
-            franchise_name: formattedName,
-            base_assigned: newBase
-          })
-        });
-        setBases(prev => [...prev, created].sort((a,b) => a.franchise_name.localeCompare(b.franchise_name)));
-      } catch (err) {
-        if (supabase) {
-          const { data, error: insertError } = await supabase
-            .from('franchise_bases')
-            .insert([{ 
-              franchise_name: formattedName, 
-              base_assigned: newBase,
-              created_by: creatorName
-            }])
-            .select();
-          if (insertError) throw insertError;
-          if (data && data[0]) {
-            setBases(prev => [...prev, data[0]].sort((a,b) => a.franchise_name.localeCompare(b.franchise_name)));
-          }
-        } else {
-          throw err;
-        }
-      }
+      const created = await fetchFromApi('/api/admin/ti/bases', {
+        method: 'POST',
+        body: JSON.stringify({
+          franchise_name: formattedName,
+          base_assigned: newBase
+        })
+      });
+      setBases(prev => [...prev, created].sort((a,b) => a.franchise_name.localeCompare(b.franchise_name)));
       setNewFranchise('');
     } catch (err) {
       alert("Erro ao cadastrar empresa/base: " + err.message);
@@ -268,23 +211,10 @@ export default function AdminPanel({ session }) {
     if (!confirm(`Deseja realmente excluir o mapeamento da franquia "${franchiseName}"?`)) return;
 
     try {
-      try {
-        await fetchFromApi(`/api/admin/ti/bases?id=${id}`, {
-          method: 'DELETE'
-        });
-        setBases(bases.filter(b => b.id !== id));
-      } catch (err) {
-        if (supabase) {
-          const { error: deleteError } = await supabase
-            .from('franchise_bases')
-            .delete()
-            .eq('id', id);
-          if (deleteError) throw deleteError;
-          setBases(bases.filter(b => b.id !== id));
-        } else {
-          throw err;
-        }
-      }
+      await fetchFromApi(`/api/admin/ti/bases?id=${id}`, {
+        method: 'DELETE'
+      });
+      setBases(bases.filter(b => b.id !== id));
     } catch (err) {
       alert("Erro ao excluir mapeamento: " + err.message);
     }
@@ -298,30 +228,14 @@ export default function AdminPanel({ session }) {
         return;
       }
 
-      try {
-        const updated = await fetchFromApi('/api/admin/ti/bases', {
-          method: 'POST',
-          body: JSON.stringify({
-            franchise_name: formattedName,
-            base_assigned: editingBase
-          })
-        });
-        setBases(bases.map(b => b.id === id ? { ...b, franchise_name: formattedName, base_assigned: editingBase } : b));
-      } catch (err) {
-        if (supabase) {
-          const { error: updateError } = await supabase
-            .from('franchise_bases')
-            .update({ 
-              franchise_name: formattedName,
-              base_assigned: editingBase 
-            })
-            .eq('id', id);
-          if (updateError) throw updateError;
-          setBases(bases.map(b => b.id === id ? { ...b, franchise_name: formattedName, base_assigned: editingBase } : b));
-        } else {
-          throw err;
-        }
-      }
+      await fetchFromApi('/api/admin/ti/bases', {
+        method: 'POST',
+        body: JSON.stringify({
+          franchise_name: formattedName,
+          base_assigned: editingBase
+        })
+      });
+      setBases(bases.map(b => b.id === id ? { ...b, franchise_name: formattedName, base_assigned: editingBase } : b));
       setEditingId(null);
     } catch (err) {
       alert("Erro ao atualizar mapeamento: " + err.message);

@@ -165,60 +165,33 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
 
   const isIntegrated = useMemo(() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const token = session?.access_token || hashParams.get('session_token') || localStorage.getItem('session_token');
     const hasHashToken = hashParams.has('session_token') || hashParams.has('access_token');
     const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-    if (hasHashToken || isIframe) {
-      return true;
-    }
-    if (session?.user && !hasHashToken) {
-      return false;
-    }
-    return true;
+    // Integrated = has any valid token (iframe, hash, or normal login session)
+    const token = session?.access_token || hashParams.get('session_token') || localStorage.getItem('session_token');
+    return !!(hasHashToken || isIframe || token);
   }, [session]);
+
 
   const saveTarefaMetadata = async (taskId, metadataPatch, logEntry) => {
     try {
-      if (isIntegrated) {
-        await fetchFromApi('/api/admin/ti/metadata', {
-          method: 'POST',
-          body: JSON.stringify({
-            id: taskId,
-            ...metadataPatch
-          })
-        });
+      await dbApi.saveTarefaMetadata({
+        id: taskId,
+        ...metadataPatch
+      });
 
-        if (logEntry) {
-          await fetchFromApi('/api/admin/ti/logs', {
-            method: 'POST',
-            body: JSON.stringify({
-              tarefa_id: taskId,
-              empresa: logEntry.empresa,
-              changed_by: logEntry.changed_by,
-              old_value: logEntry.old_value,
-              new_value: logEntry.new_value
-            })
-          });
-        }
-      } else {
-        await dbApi.saveTarefaMetadata({
-          id: taskId,
-          ...metadataPatch
+      if (logEntry) {
+        await dbApi.saveAuditLog({
+          tarefa_id: taskId,
+          empresa: logEntry.empresa,
+          changed_by: logEntry.changed_by,
+          old_value: logEntry.old_value,
+          new_value: logEntry.new_value
         });
-
-        if (logEntry) {
-          await dbApi.saveAuditLog({
-            tarefa_id: taskId,
-            empresa: logEntry.empresa,
-            changed_by: logEntry.changed_by,
-            old_value: logEntry.old_value,
-            new_value: logEntry.new_value
-          });
-        }
       }
       return true;
     } catch (err) {
-      console.error("Erro ao salvar metadados:", err);
+      console.error("Erro ao salvar metadados via PostgreSQL dbApi:", err);
       return false;
     }
   };

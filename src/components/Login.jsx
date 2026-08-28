@@ -27,7 +27,13 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
     try {
       const data = await dbApi.login(email, password);
       RateLimiter.reset(email);
-      onLoginSuccess({ user: data.user, access_token: data.access_token });
+      // Map role into user_metadata so useDashboardData can read it correctly
+      const mappedUser = {
+        ...data.user,
+        user_metadata: { role: data.user?.role || 'user', is_approved: true }
+      };
+      onLoginSuccess({ user: mappedUser, access_token: data.access_token });
+
     } catch (err) {
       RateLimiter.registerFailure(email);
       const record = RateLimiter.getRecord(email);

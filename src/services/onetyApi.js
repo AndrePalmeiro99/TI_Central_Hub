@@ -8,12 +8,12 @@ async function fetchDirectFromOnety(endpoint, queryParams = '') {
     const q = queryParams ? `&${queryParams}` : '';
     const initRes = await fetch(`/onety-proxy/${endpoint}?limit=100&page=1${q}&t=${Date.now()}`, {
       headers: { 'x-api-key': ONETY_API_KEY }
-    });
-    if (!initRes.ok) {
-      console.warn(`Onety Direct (${endpoint}) status: ${initRes.status}`);
+    }).catch(() => null);
+    
+    if (!initRes || !initRes.ok) {
       return [];
     }
-    const initData = await initRes.json();
+    const initData = await initRes.json().catch(() => ({}));
     const total = initData.total || (initData.tarefas ? initData.tarefas.length : 0);
     const firstList = initData.tarefas || initData.transbordos || initData.data || [];
     
@@ -34,25 +34,12 @@ async function fetchDirectFromOnety(endpoint, queryParams = '') {
     const restList = results.flatMap(r => r.tarefas || r.transbordos || r.data || []);
     return [...firstList, ...restList];
   } catch (err) {
-    console.error(`Erro no fetch direct de ${endpoint}:`, err);
     return [];
   }
 }
 
 async function fetchWithFallback(apiPath, directEndpoint, queryParams = '') {
-  try {
-    const res = await fetch(`${apiPath}?t=${Date.now()}`);
-    if (res.ok) {
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const json = await res.json();
-        const items = json.tarefas || json.transbordos || json.data;
-        if (Array.isArray(items)) return items;
-      }
-    }
-  } catch (err) {
-    // Fallback to proxy
-  }
+  // Se for proxy Onety direto em dev, não chama rota inexistente da Vercel
   return fetchDirectFromOnety(directEndpoint, queryParams);
 }
 

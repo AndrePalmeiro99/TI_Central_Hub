@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { supabase } from '../services/supabase';
+import { dbApi } from '../services/dbApi';
 import { User, Mail, Lock, ChevronRight, ArrowLeft, CheckCircle2, ShieldAlert, Building2 } from 'lucide-react';
 import { RateLimiter } from '../security/RateLimiter';
 
@@ -27,21 +27,7 @@ export default function Register({ onBackToLogin }) {
 
     try {
       RateLimiter.registerRegistrationAttempt();
-
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            empresa: empresa,
-            role: 'guest',
-            is_approved: false
-          }
-        }
-      });
-
-      if (signUpError) throw signUpError;
+      await dbApi.register(email, password, fullName);
       setSuccess(true);
     } catch (err) {
       setError(err.message || 'Erro ao solicitar acesso. Tente novamente.');

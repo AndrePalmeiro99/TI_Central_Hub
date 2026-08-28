@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { supabase } from './services/supabase';
 import { MetricCard, SourceBreakdown, MonthlyTrendChart, ColaboradoresDashboard, FranchiseBreakdown, sourceColors } from './components/DashboardCharts';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -100,23 +99,15 @@ function App() {
       return;
     }
 
-    // Fallback to Supabase Auth for standalone/development usage
-    if (supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setAuthLoading(false);
+    // Local session token check
+    const storedToken = localStorage.getItem('session_token');
+    if (storedToken) {
+      setSession({
+        access_token: storedToken,
+        user: { email: 'admin@ti.local', role: 'admin' }
       });
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session);
-      });
-
-      return () => {
-        if (subscription) subscription.unsubscribe();
-      };
-    } else {
-      setAuthLoading(false);
     }
+    setAuthLoading(false);
   }, []);
 
   // Dashboard Data Hook
@@ -755,13 +746,10 @@ function App() {
               Tente atualizar a página em alguns instantes ou entre em contato com o administrador.
             </span>
           </p>
-          <button className="auth-submit" style={{ marginTop: '2.5rem', width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }} onClick={() => { localStorage.removeItem('session_token'); if (supabase) { supabase.auth.signOut(); } else { window.location.reload(); } }}>
+          <button className="auth-submit" style={{ marginTop: '2.5rem', width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }} onClick={() => { localStorage.removeItem('session_token'); window.location.reload(); }}>
             <LogOut size={18} /> Sair da Conta
           </button>
         </motion.div>
-        <div className="auth-footer-tag">
-          Desenvolvido por <span>•</span> Pedro Luis
-        </div>
       </div>
     );
   }
@@ -2634,7 +2622,7 @@ function App() {
                 onClick={() => {
                   setShowProfileModal(false);
                   localStorage.removeItem('session_token');
-                  if (supabase) { supabase.auth.signOut(); } else { window.location.reload(); }
+                  window.location.reload();
                 }}
                 style={{
                   flex: 1,

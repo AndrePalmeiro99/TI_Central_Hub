@@ -1,4 +1,4 @@
-import { supabase } from '../services/supabase';
+import { dbApi } from '../services/dbApi';
 
 const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 minutos em milissegundos
 let timeoutId = null;
@@ -6,9 +6,9 @@ let timeoutId = null;
 export const setupSessionTimeout = (onTimeout) => {
   const resetTimer = () => {
     if (timeoutId) clearTimeout(timeoutId);
-    timeoutId = setTimeout(async () => {
+    timeoutId = setTimeout(() => {
       console.log("Sessão expirada por inatividade.");
-      await supabase.auth.signOut();
+      dbApi.signOut();
       if (onTimeout) onTimeout();
     }, TIMEOUT_DURATION);
   };

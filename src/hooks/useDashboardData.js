@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../services/supabase';
+import { dbApi } from '../services/dbApi';
 import { fetchOnetyTasks, fetchOnetyTransbordos, fetchOnetySaidas, fetchOnetyPrTasks, classifyTask } from '../services/onetyApi';
 import staticFranchiseBases from '../data/franchiseBases.json';
 
@@ -201,27 +201,20 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
             })
           });
         }
-      } else if (supabase) {
-        const { error } = await supabase
-          .from('tarefa_metadata')
-          .upsert({
-            id: taskId,
-            ...metadataPatch,
-            updated_at: new Date().toISOString()
-          });
-        if (error) throw error;
+      } else {
+        await dbApi.saveTarefaMetadata({
+          id: taskId,
+          ...metadataPatch
+        });
 
         if (logEntry) {
-          const { error: logError } = await supabase
-            .from('audit_log')
-            .insert({
-              tarefa_id: taskId,
-              empresa: logEntry.empresa,
-              changed_by: logEntry.changed_by,
-              old_value: logEntry.old_value,
-              new_value: logEntry.new_value
-            });
-          if (logError) throw logError;
+          await dbApi.saveAuditLog({
+            tarefa_id: taskId,
+            empresa: logEntry.empresa,
+            changed_by: logEntry.changed_by,
+            old_value: logEntry.old_value,
+            new_value: logEntry.new_value
+          });
         }
       }
       return true;
@@ -234,18 +227,9 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
   async function fetchAuditLogs(limit = 50) {
     setLoadingLogs(true);
     try {
-      const logs = await fetchFromApi(`/api/admin/ti/logs?limit=${limit}`);
+      const logs = await dbApi.getAuditLogs(limit);
       if (logs && Array.isArray(logs)) {
         setAuditLogs(logs);
-      } else if (supabase) {
-        const { data: sbLogs, error } = await supabase
-          .from('audit_log')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(limit);
-        if (!error && sbLogs) {
-          setAuditLogs(sbLogs);
-        }
       }
     } catch (e) {
       console.error("Falha ao buscar logs de auditoria via API:", e);

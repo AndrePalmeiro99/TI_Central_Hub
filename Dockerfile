@@ -1,24 +1,23 @@
-# Stage 1: Build
-FROM node:18-alpine AS builder
+# Multi-stage Dockerfile: Node + Express + PostgreSQL + React
+FROM node:18-alpine
+
 WORKDIR /app
+
+# 1. Instalar dependências
 COPY package*.json ./
 RUN npm ci
+
+# 2. Copiar código fonte
 COPY . .
+
+# 3. Compilar React (Frontend)
 RUN npm run build
 
-# Stage 2: Serve com Nginx (leve, ultra-rápido, sem Node rodando em prod)
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-# Configuração para SPA (redirecionar rotas para index.html)
-RUN echo 'server { \
-    listen 80; \
-    server_name localhost; \
-    location / { \
-        root /usr/share/nginx/html; \
-        index index.html index.htm; \
-        try_files $uri $uri/ /index.html; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# 4. Expor porta da aplicação
+EXPOSE 3000
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# 5. Iniciar servidor Node.js que conecta no PostgreSQL
+CMD ["node", "server.js"]

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../services/supabase';
+import { dbApi } from '../services/dbApi';
 import { Lock, Mail, ChevronRight, ShieldCheck, AlertCircle, UserCircle2, ArrowLeft, Send, CheckCircle2 } from 'lucide-react';
 import { RateLimiter } from '../security/RateLimiter';
 
@@ -25,15 +25,9 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
     }
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) throw authError;
-      
+      const data = await dbApi.login(email, password);
       RateLimiter.reset(email);
-      onLoginSuccess(data.session);
+      onLoginSuccess({ user: data.user, access_token: data.access_token });
     } catch (err) {
       RateLimiter.registerFailure(email);
       const record = RateLimiter.getRecord(email);

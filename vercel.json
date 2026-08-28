@@ -1,0 +1,14 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/onety-proxy/(.*)",
+      "destination": "https://back.cfonety.com.br/$1"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}

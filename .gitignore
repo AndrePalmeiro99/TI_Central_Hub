@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production build
+dist/
+dist-ssr/
+*.local
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Vercel & Deploy
+.vercel
+
+# Editor & OS
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Test scripts with hardcoded secrets
+test_supabase_tables.js
+scripts/test_onety_api.js
+
+# Secret data files
+*.secret.json
+
+# Tauri build artifacts
+src-tauri/target/
+

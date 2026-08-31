@@ -36,7 +36,16 @@ app.use(express.json());
 const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ti_dashboard',
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 5000,  // 5s timeout para não travar
+  idleTimeoutMillis: 30000,
+  max: 10
+});
+
+// CRÍTICO: sem este handler, erro de conexão crashará o processo Node.js inteiro
+pool.on('error', (err) => {
+  console.error('Erro inesperado no pool do PostgreSQL:', err.message);
+  // Não propagar — servidor continua rodando com fallback em memória
 });
 
 // In-memory / File Fallback Storage when Postgres is offline

@@ -9,22 +9,9 @@ import {
 
 export default function AdminPanel({ session }) {
   const getApiUrl = (path) => {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    let apiHost = hashParams.get('api_url');
-    
-    if (!apiHost && typeof document !== 'undefined' && document.referrer) {
-      try {
-        const refUrl = new URL(document.referrer);
-        apiHost = refUrl.origin;
-      } catch (e) {}
-    }
-    
-    if (!apiHost) {
-      apiHost = import.meta.env.VITE_API_URL || '';
-    }
-    
-    const cleanHost = apiHost.replace(/\/$/, '');
-    return `${cleanHost}${path}`;
+    // App unificado (Dockerfile): frontend e backend no mesmo domínio.
+    // Usar sempre URLs relativas — sem CORS, sem VITE_API_URL.
+    return path;
   };
 
   const fetchFromApi = async (path, options = {}) => {

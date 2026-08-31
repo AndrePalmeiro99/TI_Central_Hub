@@ -78,28 +78,9 @@ const cleanFranchiseName = (name) => {
 
 export function useDashboardData(session, autoRefreshEnabled = true) {
   const getApiUrl = (path) => {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    let apiHost = hashParams.get('api_url');
-    
-    if (!apiHost && typeof document !== 'undefined' && document.referrer) {
-      try {
-        const refUrl = new URL(document.referrer);
-        if (refUrl.origin.includes('vercel.app') || refUrl.origin.includes('localhost') || refUrl.origin.includes('127.0.0.1')) {
-          apiHost = refUrl.origin;
-        }
-      } catch (e) {}
-    }
-    
-    if (!apiHost) {
-      apiHost = import.meta.env.VITE_API_URL || '';
-    }
-
-    if (apiHost.includes('vercel.com') && !apiHost.includes('vercel.app')) {
-      apiHost = '';
-    }
-    
-    const cleanHost = apiHost.replace(/\/$/, '');
-    return `${cleanHost}${path}`;
+    // App unificado (Dockerfile): frontend e backend no mesmo domínio.
+    // Usar sempre URLs relativas — sem CORS, sem VITE_API_URL.
+    return path;
   };
 
   const fetchFromApi = async (path, options = {}) => {

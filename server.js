@@ -86,13 +86,13 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const user = userRes.rows[0];
-    // Se a senha no banco for hash bcrypt ou texto plano (compatibilidade inicial)
+    // Se password_hash existir, valida com bcrypt; senão permite login direto para migração
     const validPassword = user.password_hash 
       ? await bcrypt.compare(password, user.password_hash)
-      : (user.password === password);
+      : false;
 
     if (!validPassword) {
-      return res.status(400).json({ error: 'Credenciais inválidas.' });
+      return res.status(400).json({ error: 'Credenciais inválidas. Use o script set_password para definir sua senha.' });
     }
 
     const token = jwt.sign(
@@ -105,7 +105,7 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: user.full_name || user.email,
         role: user.role
       },
       access_token: token
@@ -121,15 +121,28 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const existing = await pool.query('SELECT id FROM user_profiles WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
-      return res.status(400).json({ error: 'Usuário já cadastrado com este e-mail.' });
+      // Usuário já existe — apenas define/atualiza a senha
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      const updRes = await pool.query(
+        'UPDATE user_profiles SET password_hash = $1 WHERE email = $2 RETURNING id, email, full_name, role',
+        [hashedPassword, email]
+      );
+      const user = updRes.rows[0];
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role || 'user' },
+        JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+      return res.json({ user: { ...user, name: user.full_name }, access_token: token });
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const insertRes = await pool.query(
-      `INSERT INTO user_profiles (email, password_hash, name, role, created_at)
-       VALUES ($1, $2, $3, 'user', NOW()) RETURNING id, email, name, role`,
+      `INSERT INTO user_profiles (email, password_hash, full_name, role)
+       VALUES ($1, $2, $3, 'user') RETURNING id, email, full_name, role`,
       [email, hashedPassword, name || email.split('@')[0]]
     );
 
@@ -140,7 +153,7 @@ app.post('/api/auth/register', async (req, res) => {
       { expiresIn: '8h' }
     );
 
-    res.status(201).json({ user, access_token: token });
+    res.status(201).json({ user: { ...user, name: user.full_name }, access_token: token });
   } catch (err) {
     console.error('Erro no cadastro:', err);
     res.status(500).json({ error: 'Erro ao registrar usuário.' });
@@ -191,18 +204,9 @@ app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
 // ==========================================
 app.get('/api/admin/ti/users', authenticateToken, async (req, res) => {
   try {
-    // Tenta buscar com is_approved; se coluna não existir, usa fallback
-    let result;
-    try {
-      result = await pool.query(
-        'SELECT id, email, name, role, is_approved, created_at FROM user_profiles ORDER BY created_at DESC'
-      );
-    } catch (colErr) {
-      // Coluna is_approved não existe — busca sem ela
-      result = await pool.query(
-        'SELECT id, email, name, role, created_at FROM user_profiles ORDER BY created_at DESC'
-      );
-    }
+    const result = await pool.query(
+      'SELECT * FROM user_profiles ORDER BY updated_at DESC'
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('Erro ao buscar usuários:', err);
@@ -225,7 +229,7 @@ app.post('/api/admin/ti/users/role', authenticateToken, async (req, res) => {
   const { target_user_id, new_role, new_approved } = req.body;
   try {
     const result = await pool.query(
-      'UPDATE user_profiles SET role = $1, is_approved = $2 WHERE id = $3 RETURNING id, email, name, role, is_approved',
+      'UPDATE user_profiles SET role = $1, is_approved = $2, updated_at = NOW() WHERE id = $3 RETURNING id, email, full_name, role, is_approved',
       [new_role, new_approved, target_user_id]
     );
     res.json(result.rows[0] || {});

@@ -182,9 +182,18 @@ app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
 // ==========================================
 app.get('/api/admin/ti/users', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT id, email, name, role, is_approved, created_at FROM user_profiles ORDER BY created_at DESC'
-    );
+    // Tenta buscar com is_approved; se coluna não existir, usa fallback
+    let result;
+    try {
+      result = await pool.query(
+        'SELECT id, email, name, role, is_approved, created_at FROM user_profiles ORDER BY created_at DESC'
+      );
+    } catch (colErr) {
+      // Coluna is_approved não existe — busca sem ela
+      result = await pool.query(
+        'SELECT id, email, name, role, created_at FROM user_profiles ORDER BY created_at DESC'
+      );
+    }
     res.json(result.rows);
   } catch (err) {
     console.error('Erro ao buscar usuários:', err);

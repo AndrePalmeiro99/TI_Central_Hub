@@ -177,6 +177,90 @@ app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
   }
 });
 
+// ==========================================
+// ADMIN — USUÁRIOS
+// ==========================================
+app.get('/api/admin/ti/users', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, email, name, role, is_approved, created_at FROM user_profiles ORDER BY created_at DESC'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Erro ao buscar usuários:', err);
+    res.status(500).json({ error: 'Erro ao buscar usuários.' });
+  }
+});
+
+app.delete('/api/admin/ti/users', authenticateToken, async (req, res) => {
+  const { id } = req.query;
+  try {
+    await pool.query('DELETE FROM user_profiles WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erro ao excluir usuário:', err);
+    res.status(500).json({ error: 'Erro ao excluir usuário.' });
+  }
+});
+
+app.post('/api/admin/ti/users/role', authenticateToken, async (req, res) => {
+  const { target_user_id, new_role, new_approved } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE user_profiles SET role = $1, is_approved = $2 WHERE id = $3 RETURNING id, email, name, role, is_approved',
+      [new_role, new_approved, target_user_id]
+    );
+    res.json(result.rows[0] || {});
+  } catch (err) {
+    console.error('Erro ao atualizar papel:', err);
+    res.status(500).json({ error: 'Erro ao atualizar papel do usuário.' });
+  }
+});
+
+// ==========================================
+// ADMIN — BASES (franchise_royalties_config)
+// ==========================================
+app.get('/api/admin/ti/bases', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM franchise_royalties_config ORDER BY franchise_name ASC'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Erro ao buscar bases:', err);
+    res.status(500).json({ error: 'Erro ao buscar bases.' });
+  }
+});
+
+app.post('/api/admin/ti/bases', authenticateToken, async (req, res) => {
+  const { franchise_name, base_assigned } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO franchise_royalties_config (franchise_name, base_assigned)
+       VALUES ($1, $2)
+       ON CONFLICT (franchise_name) DO UPDATE SET base_assigned = EXCLUDED.base_assigned
+       RETURNING *`,
+      [franchise_name, base_assigned]
+    );
+    res.json(result.rows[0] || {});
+  } catch (err) {
+    console.error('Erro ao salvar base:', err);
+    res.status(500).json({ error: 'Erro ao salvar base.' });
+  }
+});
+
+app.delete('/api/admin/ti/bases', authenticateToken, async (req, res) => {
+  const { id } = req.query;
+  try {
+    await pool.query('DELETE FROM franchise_royalties_config WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erro ao excluir base:', err);
+    res.status(500).json({ error: 'Erro ao excluir base.' });
+  }
+});
+
+
 app.post('/api/audit-logs', authenticateToken, async (req, res) => {
   const { tarefa_id, empresa, changed_by, old_value, new_value } = req.body;
   try {

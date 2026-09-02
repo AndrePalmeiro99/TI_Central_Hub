@@ -30,8 +30,8 @@ Plataforma unificada para monitoramento operacional, gestão de chamados, contro
 
 - **Frontend**: React 18, Vite, Lucide Icons, Framer Motion, Recharts
 - **Desktop Runtime**: Rust, Tauri v2
-- **Backend / APIs**: Vercel Serverless Functions / Node.js
-- **Banco de Dados & Autenticação**: Supabase (PostgreSQL, Auth, RLS)
+- **Backend / APIs**: Node.js / Express
+- **Banco de Dados & Autenticação**: PostgreSQL, JWT, BCrypt
 
 ---
 
@@ -55,6 +55,7 @@ Plataforma unificada para monitoramento operacional, gestão de chamados, contro
 
 ### Pré-requisitos
 - Node.js 18+
+- PostgreSQL
 - Rust & Cargo (caso deseje compilar versão Desktop)
 
 ### 1. Instalar dependências
@@ -63,11 +64,12 @@ npm install
 ```
 
 ### 2. Configurar variáveis de ambiente
-Crie um arquivo `.env` na raiz do projeto com base no modelo:
+Crie um arquivo `.env` na raiz do projeto com base no arquivo `.env.example`:
 
 ```env
-VITE_SUPABASE_URL=https://seu-projeto.supabase.co
-VITE_SUPABASE_ANON_KEY=sua_chave_publica_anon
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ti_dashboard
+JWT_SECRET=seu_jwt_secret_seguro
+PORT=3000
 VITE_ONETY_API_KEY=sua_chave_de_integracao_api
 ```
 

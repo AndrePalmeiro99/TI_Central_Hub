@@ -42,6 +42,28 @@ export const dbApi = {
     return data;
   },
 
+  async forgotPassword(email) {
+    const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao solicitar redefinição de senha');
+    return data;
+  },
+
+  async resetPassword(token, new_password) {
+    const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao redefinir senha');
+    return data;
+  },
+
   signOut() {
     localStorage.removeItem('session_token');
   },

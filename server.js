@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -16,16 +17,32 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'ti_dashboard_secret_key_change_in_prod';
 
+// Configuração SMTP Dinâmica
+const smtpTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_SECURE === 'true', // true para 465, false para 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
+});
+
 const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
   'https://monitor-ti-central-hub.k6fcpj.easypanel.host',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    // Permite requisições sem origin (como mobile/curl), localhost, 127.0.0.1 ou IPs locais (192.168.x.x, 10.x.x.x)
+    if (
+      !origin ||
+      allowedOrigins.includes(origin) ||
+      /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
     callback(new Error(`CORS bloqueado: ${origin}`));
   },
   credentials: true,
@@ -157,6 +174,91 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (err) {
     console.error('Erro no cadastro:', err);
     res.status(500).json({ error: 'Erro ao registrar usuário.' });
+  }
+});
+
+// Envio de e-mail de recuperação de senha via SMTP Direto
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
+
+  try {
+    const userRes = await pool.query('SELECT id, email, full_name FROM user_profiles WHERE email = $1', [email]);
+    if (userRes.rows.length === 0) {
+      // Retorna sucesso para evitar enumeração de usuários
+      return res.json({ message: 'Se o e-mail existir, você receberá as instruções em breve.' });
+    }
+
+    const user = userRes.rows[0];
+    const resetToken = jwt.sign(
+      { id: user.id, email: user.email, type: 'reset' },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    // Detecta origem para montar o link
+    const host = req.get('origin') || req.get('referer') || `http://localhost:${PORT}`;
+    const cleanHost = host.replace(/\/$/, '');
+    const resetLink = `${cleanHost}/?reset_token=${resetToken}`;
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || '"TI Central Hub" <no-reply@cfcontabilidade.com>',
+      to: user.email,
+      subject: 'Redefinição de Senha - TI Central Hub',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #0f172a; color: #f8fafc; border-radius: 8px;">
+          <h2 style="color: #10b981; margin-bottom: 10px;">TI Central Hub</h2>
+          <p>Olá, <strong>${user.full_name || 'Colaborador'}</strong>!</p>
+          <p>Recebemos uma solicitação para redefinir a sua senha de acesso ao Dashboard TI.</p>
+          <div style="margin: 30px 0; text-align: center;">
+            <a href="${resetLink}" style="background: #10b981; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Redefinir Minha Senha</a>
+          </div>
+          <p style="font-size: 12px; color: #94a3b8;">Este link expira em 1 hora. Se você não solicitou esta alteração, ignore este e-mail.</p>
+          <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;" />
+          <p style="font-size: 11px; color: #64748b;">Link direto: <a href="${resetLink}" style="color: #38bdf8;">${resetLink}</a></p>
+        </div>
+      `
+    };
+
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      await smtpTransporter.sendMail(mailOptions);
+      console.log(`[SMTP] E-mail de redefinição enviado para ${user.email}`);
+    } else {
+      console.log(`[DEV / SEM SMTP] Token gerado para ${user.email}: ${resetLink}`);
+    }
+
+    res.json({ message: 'Instruções enviadas para o seu e-mail.' });
+  } catch (err) {
+    console.error('Erro ao processar forgot-password:', err);
+    res.status(500).json({ error: 'Erro ao enviar e-mail de recuperação.' });
+  }
+});
+
+// Redefinição efetiva da senha
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, new_password } = req.body;
+  if (!token || !new_password) {
+    return res.status(400).json({ error: 'Token e nova senha são obrigatórios.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.type !== 'reset') {
+      return res.status(400).json({ error: 'Token inválido para redefinição.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(new_password, salt);
+
+    await pool.query(
+      'UPDATE user_profiles SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hashedPassword, decoded.id]
+    );
+
+    res.json({ success: true, message: 'Senha atualizada com sucesso!' });
+  } catch (err) {
+    console.error('Erro no reset-password:', err);
+    res.status(400).json({ error: 'Link de redefinição expirado ou inválido.' });
   }
 });
 

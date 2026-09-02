@@ -9,8 +9,14 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
+  const [resetToken, setResetToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    return params.get('reset_token') || hashParams.get('reset_token') || null;
+  });
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -27,13 +33,11 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
     try {
       const data = await dbApi.login(email, password);
       RateLimiter.reset(email);
-      // Map role into user_metadata so useDashboardData can read it correctly
       const mappedUser = {
         ...data.user,
         user_metadata: { role: data.user?.role || 'user', is_approved: true }
       };
       onLoginSuccess({ user: mappedUser, access_token: data.access_token });
-
     } catch (err) {
       RateLimiter.registerFailure(email);
       const record = RateLimiter.getRecord(email);
@@ -49,15 +53,40 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
     }
   };
 
-  const handleResetPassword = async (e) => {
+  const handleForgotPassword = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
+      await dbApi.forgotPassword(email);
       setResetSent(true);
     } catch (err) {
-      setError('Erro ao enviar solicitação de recuperação.');
+      setError(err.message || 'Erro ao enviar solicitação de recuperação.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteReset = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError('As senhas não coincidem.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await dbApi.resetPassword(resetToken, newPassword);
+      setResetSuccess(true);
+    } catch (err) {
+      setError(err.message || 'Erro ao redefinir a senha.');
     } finally {
       setLoading(false);
     }
@@ -76,12 +105,83 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
       >
         <div className="auth-header">
           <div className="auth-logo">V</div>
-          <h2>{showForgotPassword ? 'Recuperar Senha' : 'Acesso ao Dashboard'}</h2>
-          <p>{showForgotPassword ? 'Enviaremos um link para o seu e-mail' : 'TI Central Hub'}</p>
+          <h2>
+            {resetToken 
+              ? 'Nova Senha' 
+              : (showForgotPassword ? 'Recuperar Senha' : 'Acesso ao Dashboard')}
+          </h2>
+          <p>
+            {resetToken 
+              ? 'Crie uma nova senha para sua conta' 
+              : (showForgotPassword ? 'Enviaremos um link para o seu e-mail' : 'TI Central Hub')}
+          </p>
         </div>
 
         <AnimatePresence mode="wait">
-          {showForgotPassword ? (
+          {resetToken ? (
+            <motion.div
+              key="reset-form"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+            >
+              {resetSuccess ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div className="success-icon-container" style={{ background: 'rgba(16, 185, 129, 0.1)', width: '80px', height: '80px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+                    <CheckCircle2 size={40} color="var(--accent-green)" />
+                  </div>
+                  <h3>Senha redefinida!</h3>
+                  <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Sua nova senha foi salva com sucesso.</p>
+                  <button 
+                    className="auth-submit" 
+                    style={{ marginTop: '2rem', width: '100%' }}
+                    onClick={() => {
+                      setResetToken(null);
+                      setResetSuccess(false);
+                      setShowForgotPassword(false);
+                      window.history.replaceState({}, document.title, window.location.pathname);
+                    }}
+                  >
+                    <ArrowLeft size={18} /> Ir para Login
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleCompleteReset} className="auth-form">
+                  <div className="auth-input-group">
+                    <label><Lock size={14} /> Nova Senha</label>
+                    <input 
+                      type="password" 
+                      placeholder="Mínimo 6 caracteres" 
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="auth-input-group">
+                    <label><Lock size={14} /> Confirmar Nova Senha</label>
+                    <input 
+                      type="password" 
+                      placeholder="Repita a nova senha" 
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="auth-error">
+                      <AlertCircle size={14} /> {error}
+                    </div>
+                  )}
+
+                  <button type="submit" className="auth-submit" disabled={loading}>
+                    {loading ? <div className="spinner-small"></div> : <>Salvar Nova Senha <CheckCircle2 size={18} /></>}
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          ) : showForgotPassword ? (
             <motion.div
               key="forgot"
               initial={{ opacity: 0, x: 20 }}
@@ -94,7 +194,7 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
                     <CheckCircle2 size={40} color="var(--accent-green)" />
                   </div>
                   <h3>E-mail enviado!</h3>
-                  <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Verifique sua caixa de entrada para redefinir sua senha.</p>
+                  <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Verifique sua caixa de entrada para o link de redefinição.</p>
                   <button 
                     className="auth-submit" 
                     style={{ marginTop: '2rem', width: '100%' }}
@@ -104,7 +204,7 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleResetPassword} className="auth-form">
+                <form onSubmit={handleForgotPassword} className="auth-form">
                   <div className="auth-input-group">
                     <label><Mail size={14} /> E-mail da Conta</label>
                     <input 
@@ -123,7 +223,7 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
                   )}
 
                   <button type="submit" className="auth-submit" disabled={loading}>
-                    {loading ? <div className="spinner-small"></div> : <>Enviar Recuperação <Send size={18} /></>}
+                    {loading ? <div className="spinner-small"></div> : <>Enviar Link de Recuperação <Send size={18} /></>}
                   </button>
 
                   <button 
@@ -132,7 +232,7 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
                     style={{ marginTop: '1rem', width: '100%', background: 'none', border: 'none' }}
                     onClick={() => setShowForgotPassword(false)}
                   >
-                    <ArrowLeft size={14} /> Voltar ao início
+                    <ArrowLeft size={14} /> Voltar ao login
                   </button>
                 </form>
               )}

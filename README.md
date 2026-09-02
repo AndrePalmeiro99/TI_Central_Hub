@@ -21,7 +21,10 @@ Plataforma unificada para monitoramento operacional, gestão de chamados, contro
 - **Autenticação Segura**: Controle de sessão e controle de acesso baseado em perfis (RBAC / Admin).
 - **Proteção contra Abusos**: Mecanismos de rate limiting nas requisições.
 
-### 4. Arquitetura Híbrida (Web & Desktop)
+### 4. Integração com Plataformas de Tarefas
+- **Vínculo Flexível de APIs**: Conexão com plataformas externas focadas em gestão de tarefas e fluxo de cadastro de empresas.
+
+### 5. Arquitetura Híbrida (Web & Desktop)
 - Aplicação web moderna com suporte a empacotamento nativo desktop multiplataforma via Tauri.
 
 ---
@@ -67,10 +70,12 @@ npm install
 Crie um arquivo `.env` na raiz do projeto com base no arquivo `.env.example`:
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ti_dashboard
+DATABASE_URL="Seu URL para o banco aqui"
 JWT_SECRET=seu_jwt_secret_seguro
 PORT=3000
-VITE_ONETY_API_KEY=sua_chave_de_integracao_api
+
+# Integração Externa (Plataforma de Tarefas / Cadastro de Empresa)
+API_INTEGRACAO_KEY=sua_chave_de_integracao_aqui
 ```
 
 ### 3. Rodar em ambiente de desenvolvimento

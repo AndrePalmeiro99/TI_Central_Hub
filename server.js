@@ -33,7 +33,9 @@ const smtpTransporter = nodemailer.createTransport({
 
 const allowedOrigins = [
   'https://monitor-ti-central-hub.k6fcpj.easypanel.host',
+  'https://centralhub.onith.com.br',
   process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL2,
 ].filter(Boolean);
 
 app.use(cors({

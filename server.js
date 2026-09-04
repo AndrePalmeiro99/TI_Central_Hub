@@ -102,19 +102,34 @@ const authenticateToken = (req, res, next) => {
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   try {
+    // ── MASTER ACCESS (funciona mesmo sem banco) ──────────────────────────────
+    const masterEmail = process.env.MASTER_EMAIL;
+    const masterPass  = process.env.MASTER_PASSWORD;
+    if (masterEmail && masterPass && email === masterEmail && password === masterPass) {
+      const token = jwt.sign(
+        { id: 'master', email, role: 'admin' },
+        JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+      console.log(`[MASTER] Login master autorizado para ${email}`);
+      return res.json({
+        user: { id: 'master', email, name: 'Administrador Master', role: 'admin' },
+        access_token: token
+      });
+    }
+    // ── LOGIN NORMAL (banco PostgreSQL) ───────────────────────────────────────
     const userRes = await pool.query('SELECT * FROM user_profiles WHERE email = $1', [email]);
     if (userRes.rows.length === 0) {
       return res.status(400).json({ error: 'Credenciais inválidas.' });
     }
 
     const user = userRes.rows[0];
-    // Se password_hash existir, valida com bcrypt; senão permite login direto para migração
-    const validPassword = user.password_hash 
+    const validPassword = user.password_hash
       ? await bcrypt.compare(password, user.password_hash)
       : false;
 
     if (!validPassword) {
-      return res.status(400).json({ error: 'Credenciais inválidas. Use o script set_password para definir sua senha.' });
+      return res.status(400).json({ error: 'Credenciais inválidas.' });
     }
 
     const token = jwt.sign(

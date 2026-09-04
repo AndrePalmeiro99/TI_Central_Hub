@@ -1,23 +1,19 @@
-# Multi-stage Dockerfile: Node + Express + PostgreSQL + React
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# 1. Instalar dependências
+# Instala dependências
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
-# 2. Copiar código fonte
+# Copia código fonte
 COPY . .
 
-# 3. Compilar React (Frontend)
+# Gera o build do frontend (dist/)
 RUN npm run build
 
-# 4. Expor porta da aplicação
+# Expõe a porta do servidor
 EXPOSE 3000
 
-ENV NODE_ENV=production
-ENV PORT=3000
-
-# 5. Iniciar servidor Node.js que conecta no PostgreSQL
+# Inicia o backend Express (que também serve o frontend compilado)
 CMD ["node", "server.js"]

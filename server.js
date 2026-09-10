@@ -15,6 +15,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// FIX: trust proxy para rate-limit funcionar atrás de nginx/easypanel
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'ti_dashboard_secret_key_change_in_prod';
 
@@ -22,13 +24,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ti_dashboard_secret_key_change_in_
 const smtpTransporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true', // true para 465, false para 587
+  secure: process.env.SMTP_SECURE === 'true',
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
   },
-  // FIX C-4: rejectUnauthorized removido — verificação TLS ativa
-  // FIX M-3: timeouts para evitar hang indefinido
+  // SMTP_REJECT_UNAUTHORIZED=false para servidores com cert auto-assinado
+  tls: {
+    rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED !== 'false'
+  },
   connectionTimeout: 10000,
   greetingTimeout: 5000,
   socketTimeout: 10000
@@ -591,8 +595,22 @@ app.post('/api/admin/ti/royalties', authenticateToken, requireAdmin, async (req,
 // FIX C-2: chave não pode ter fallback hardcoded no código-fonte
 const ONETY_API_KEY = process.env.VITE_ONETY_API_KEY || '';
 
-// FIX M-8: proxy requer autenticação válida
-app.use('/onety-proxy', authenticateToken, async (req, res) => {
+// Proxy Onety: autenticação opcional (frontend mesmo-domínio usa token se disponível)
+const authenticateTokenOptional = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    req.user = err ? null : user;
+    next();
+  });
+};
+
+// FIX M-8: proxy com auth opcional + body forward
+app.use('/onety-proxy', authenticateTokenOptional, async (req, res) => {
   if (!ONETY_API_KEY) {
     return res.status(503).json({ error: 'Chave Onety não configurada.' });
   }

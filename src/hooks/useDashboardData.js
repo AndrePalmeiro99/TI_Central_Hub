@@ -178,6 +178,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
   };
 
   async function fetchAuditLogs(limit = 50) {
+    // Sem sessão: não tentar buscar logs (evita 401)
+    if (!session?.access_token && !localStorage.getItem('session_token')) return;
     setLoadingLogs(true);
     try {
       const logs = await dbApi.getAuditLogs(limit);
@@ -680,6 +682,15 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
 
   // FIX M-2: useCallback (não useMemo) com deps completas para função async
   const refreshData = useCallback(async () => {
+    // Sem sessão ativa: não chamar API (evita 401s em cascata)
+    const activeToken = session?.access_token || localStorage.getItem('session_token');
+    if (!activeToken) {
+      setData(getMockData());
+      setUsingMock(true);
+      setLoading(false);
+      return;
+    }
+
     // Fortaleza Digital: Isolamento total para convidados (Visitantes)
     if (isActuallyGuest) {
       setData(getMockData());
@@ -1223,6 +1234,7 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       fetchAuditLogs(50);
     }, 60000);
     return () => clearInterval(pollInterval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshData, autoRefreshEnabled]);
 
   const dataMesAtual = useMemo(() => {

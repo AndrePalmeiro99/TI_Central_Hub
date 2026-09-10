@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
@@ -26,9 +27,11 @@ const smtpTransporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
   },
-  tls: {
-    rejectUnauthorized: false
-  }
+  // FIX C-4: rejectUnauthorized removido — verificação TLS ativa
+  // FIX M-3: timeouts para evitar hang indefinido
+  connectionTimeout: 10000,
+  greetingTimeout: 5000,
+  socketTimeout: 10000
 });
 
 const allowedOrigins = [
@@ -58,7 +61,8 @@ app.use(express.json());
 const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ti_dashboard',
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  // FIX M-6: rejectUnauthorized removido — verificação TLS ativa
+  ssl: process.env.DATABASE_SSL === 'true' ? true : false,
   connectionTimeoutMillis: 5000,  // 5s timeout para não travar
   idleTimeoutMillis: 30000,
   max: 10
@@ -77,29 +81,52 @@ let memoryStore = {
   franchise_royalties_config: []
 };
 
-// Middleware de Autenticação JWT tolerante
+// FIX C-1: authenticateToken sem fallback para admin — token obrigatório e válido
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) {
-    req.user = { email: 'admin@ti.local', role: 'admin' };
-    return next();
+    return res.status(401).json({ error: 'Token de autenticação ausente.' });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      req.user = { email: 'admin@ti.local', role: 'admin' };
-    } else {
-      req.user = user;
+      return res.status(403).json({ error: 'Token inválido ou expirado.' });
     }
+    req.user = user;
     next();
   });
 };
 
+// FIX C-3: middleware para exigir papel admin
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Acesso restrito a administradores.' });
+  }
+  next();
+};
+
+// FIX M-5: rate limiters server-side
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 10,
+  message: { error: 'Muitas tentativas de login. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1h
+  max: 5,
+  message: { error: 'Muitas solicitações de redefinição. Tente novamente em 1 hora.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // ==========================================
 // 1. ROTAS DE AUTENTICAÇÃO
 // ==========================================
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   try {
     // ── MASTER ACCESS (funciona mesmo sem banco) ──────────────────────────────
@@ -153,7 +180,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', loginLimiter, async (req, res) => {
   const { email, password, name } = req.body;
   try {
     const existing = await pool.query('SELECT id FROM user_profiles WHERE email = $1', [email]);
@@ -198,7 +225,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Envio de e-mail de recuperação de senha via SMTP Direto
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
 
@@ -286,7 +313,8 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // 2. AUDIT LOGS
 // ==========================================
 app.get('/api/audit-logs', authenticateToken, async (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
+  // FIX B-6: cap de 500 para evitar dump completo da tabela
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
   const { tarefa_id } = req.query;
   try {
     let result;
@@ -324,7 +352,7 @@ app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
 // ==========================================
 // ADMIN — USUÁRIOS
 // ==========================================
-app.get('/api/admin/ti/users', authenticateToken, async (req, res) => {
+app.get('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM user_profiles ORDER BY updated_at DESC'
@@ -336,7 +364,7 @@ app.get('/api/admin/ti/users', authenticateToken, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/ti/users', authenticateToken, async (req, res) => {
+app.delete('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.query;
   try {
     await pool.query('DELETE FROM user_profiles WHERE id = $1', [id]);
@@ -347,7 +375,7 @@ app.delete('/api/admin/ti/users', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/admin/ti/users/role', authenticateToken, async (req, res) => {
+app.post('/api/admin/ti/users/role', authenticateToken, requireAdmin, async (req, res) => {
   const { target_user_id, new_role, new_approved } = req.body;
   try {
     const result = await pool.query(
@@ -364,7 +392,7 @@ app.post('/api/admin/ti/users/role', authenticateToken, async (req, res) => {
 // ==========================================
 // ADMIN — BASES (franchise_royalties_config)
 // ==========================================
-app.get('/api/admin/ti/bases', authenticateToken, async (req, res) => {
+app.get('/api/admin/ti/bases', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM franchise_royalties_config ORDER BY franchise_name ASC'
@@ -376,7 +404,7 @@ app.get('/api/admin/ti/bases', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/admin/ti/bases', authenticateToken, async (req, res) => {
+app.post('/api/admin/ti/bases', authenticateToken, requireAdmin, async (req, res) => {
   const { franchise_name, base_assigned } = req.body;
   try {
     const result = await pool.query(
@@ -393,7 +421,7 @@ app.post('/api/admin/ti/bases', authenticateToken, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/ti/bases', authenticateToken, async (req, res) => {
+app.delete('/api/admin/ti/bases', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.query;
   try {
     await pool.query('DELETE FROM franchise_royalties_config WHERE id = $1', [id]);
@@ -417,6 +445,8 @@ app.post('/api/audit-logs', authenticateToken, async (req, res) => {
   } catch (err) {
     const logItem = { id: Date.now(), tarefa_id, empresa, changed_by: changed_by || req.user.email, old_value, new_value, created_at: new Date().toISOString() };
     memoryStore.audit_log.unshift(logItem);
+    // FIX M-4: cap de 500 entradas para evitar OOM
+    if (memoryStore.audit_log.length > 500) memoryStore.audit_log = memoryStore.audit_log.slice(0, 500);
     res.status(201).json(logItem);
   }
 });
@@ -532,7 +562,7 @@ app.post('/api/franchise-royalties', authenticateToken, async (req, res) => {
 });
 
 // Alias used by the frontend hook updateFranchiseRoyaltyConfig
-app.post('/api/admin/ti/royalties', authenticateToken, async (req, res) => {
+app.post('/api/admin/ti/royalties', authenticateToken, requireAdmin, async (req, res) => {
   const { franchise_name, fixed_royalty, variable_percentage } = req.body;
   try {
     const result = await pool.query(
@@ -558,18 +588,28 @@ app.post('/api/admin/ti/royalties', authenticateToken, async (req, res) => {
 // ==========================================
 // 5. PROXY TRANSPARENTE ONETY NO BACKEND
 // ==========================================
-const ONETY_API_KEY = process.env.VITE_ONETY_API_KEY || '1292d747a0e28f7b1b2c1f81f74af2c492c8fde4999cb34b5107b2f1a4e62290';
+// FIX C-2: chave não pode ter fallback hardcoded no código-fonte
+const ONETY_API_KEY = process.env.VITE_ONETY_API_KEY || '';
 
-app.use('/onety-proxy', async (req, res) => {
+// FIX M-8: proxy requer autenticação válida
+app.use('/onety-proxy', authenticateToken, async (req, res) => {
+  if (!ONETY_API_KEY) {
+    return res.status(503).json({ error: 'Chave Onety não configurada.' });
+  }
   try {
     const targetUrl = `https://back.cfonety.com.br${req.url}`;
-    const response = await fetch(targetUrl, {
+    const fetchOptions = {
       method: req.method,
       headers: {
         'x-api-key': ONETY_API_KEY,
         'Content-Type': 'application/json'
       }
-    });
+    };
+    // FIX B-4: passar body em métodos que suportam
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
+      fetchOptions.body = JSON.stringify(req.body);
+    }
+    const response = await fetch(targetUrl, fetchOptions);
 
     if (!response.ok) {
       return res.status(200).json([]);

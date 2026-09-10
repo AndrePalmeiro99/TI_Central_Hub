@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { dbApi } from '../services/dbApi';
 import { fetchOnetyTasks, fetchOnetyTransbordos, fetchOnetySaidas, fetchOnetyPrTasks, classifyTask } from '../services/onetyApi';
 import staticFranchiseBases from '../data/franchiseBases.json';
@@ -624,10 +624,17 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     }
   };
 
-  // Delete Rescisao entry in exit flows
+  // FIX C-5: Delete Rescisao — persiste no banco antes de atualizar estado
   const deleteRescisaoEntry = async (id) => {
-    setRescisoes(prev => prev.filter(r => r.id !== id));
-    return true;
+    try {
+      // Sobrescreve a entrada com observacao null para marcar como deletada
+      await dbApi.saveTarefaMetadata({ id, observacao: null, is_cancelled: true });
+      setRescisoes(prev => prev.filter(r => r.id !== id));
+      return true;
+    } catch (err) {
+      console.error('Erro ao excluir rescisão:', err);
+      return false;
+    }
   };
 
   // Create Rescisao entry
@@ -671,7 +678,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     }
   };
 
-  const refreshData = useMemo(() => async () => {
+  // FIX M-2: useCallback (não useMemo) com deps completas para função async
+  const refreshData = useCallback(async () => {
     // Fortaleza Digital: Isolamento total para convidados (Visitantes)
     if (isActuallyGuest) {
       setData(getMockData());
@@ -726,18 +734,21 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
         console.debug("Backend local / PostgreSQL offline ou sem sessão ativa para metadados.");
       }
 
+      // FIX M-1: chamada única de getFranchiseRoyalties — derivar ambos os mapas
+      let royaltiesRaw = [];
       try {
-        const royalties = await dbApi.getFranchiseRoyalties();
-        if (Array.isArray(royalties)) {
-          fBasesMap = royalties.reduce((acc, row) => {
-            if (row.franchise_name && row.base_assigned) {
-              acc[row.franchise_name.toUpperCase()] = row.base_assigned;
-            }
-            return acc;
-          }, {});
-        }
+        royaltiesRaw = await dbApi.getFranchiseRoyalties();
       } catch (e) {
         console.debug("Sem retorno de franchise_bases do backend.");
+      }
+
+      if (Array.isArray(royaltiesRaw) && royaltiesRaw.length > 0) {
+        fBasesMap = royaltiesRaw.reduce((acc, row) => {
+          if (row.franchise_name && row.base_assigned) {
+            acc[row.franchise_name.toUpperCase()] = row.base_assigned;
+          }
+          return acc;
+        }, {});
       }
 
       if (!fBasesMap || Object.keys(fBasesMap).length === 0) {
@@ -751,19 +762,14 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       setFranchiseBasesMap(fBasesMap);
 
       let fRoyaltiesMap = {};
-      try {
-        const royaltiesData = await dbApi.getFranchiseRoyalties();
-        if (Array.isArray(royaltiesData)) {
-          fRoyaltiesMap = royaltiesData.reduce((acc, row) => {
-            acc[row.franchise_name.toUpperCase()] = {
-              fixedRoyalty: parseFloat(row.fixed_royalty) || 530.00,
-              variablePercentage: parseFloat(row.variable_percentage) || 12.00
-            };
-            return acc;
-          }, {});
-        }
-      } catch (e) {
-        console.debug("Sem royalties customizados no PostgreSQL.");
+      if (Array.isArray(royaltiesRaw) && royaltiesRaw.length > 0) {
+        fRoyaltiesMap = royaltiesRaw.reduce((acc, row) => {
+          acc[row.franchise_name.toUpperCase()] = {
+            fixedRoyalty: parseFloat(row.fixed_royalty) || 530.00,
+            variablePercentage: parseFloat(row.variable_percentage) || 12.00
+          };
+          return acc;
+        }, {});
       }
       setFranchiseRoyaltiesMap(fRoyaltiesMap);
 
@@ -1204,7 +1210,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     } finally {
       setLoading(false);
     }
-  }, [isActuallyGuest]);
+  // FIX M-2: deps completas do useCallback (sem fetchFromApi inline — lida via session)
+  }, [isActuallyGuest, isIntegrated, session?.access_token]);
 
   useEffect(() => {
     refreshData();

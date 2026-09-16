@@ -37,3 +37,4 @@ scripts/test_onety_api.js
 # Tauri build artifacts
 src-tauri/target/
 
+*.md

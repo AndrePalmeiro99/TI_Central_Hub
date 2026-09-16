@@ -360,7 +360,7 @@ app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
 app.get('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, full_name, role, is_approved, created_at, updated_at FROM user_profiles ORDER BY updated_at DESC'
+      'SELECT id, email, full_name, role, is_approved, updated_at FROM user_profiles ORDER BY updated_at DESC'
     );
     res.json(result.rows);
   } catch (err) {
@@ -391,7 +391,7 @@ app.post('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res
     const insertRes = await pool.query(
       `INSERT INTO user_profiles (email, password_hash, full_name, role, is_approved, updated_at)
        VALUES ($1, $2, $3, $4, TRUE, NOW())
-       RETURNING id, email, full_name, role, is_approved, created_at, updated_at`,
+       RETURNING id, email, full_name, role, is_approved, updated_at`,
       [cleanEmail, hashedPassword, full_name?.trim() || cleanEmail.split('@')[0], userRole]
     );
 

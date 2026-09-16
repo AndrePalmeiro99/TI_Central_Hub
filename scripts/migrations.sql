@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 -- Colunas adicionadas em versões posteriores (idempotente)
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS created_at  TIMESTAMPTZ DEFAULT NOW();
 
 -- -------------------------------------------------------------
 -- 2. NORMALIZAR ROLES EXISTENTES NO BANCO

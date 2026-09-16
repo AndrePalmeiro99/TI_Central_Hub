@@ -247,7 +247,6 @@ export default function AdminPanel({ session }) {
 
       setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
       setEditingUser(null);
-      alert("Usuário atualizado com sucesso!");
     } catch (err) {
       alert("Erro ao atualizar usuário: " + err.message);
     } finally {

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { 
   Users, UserPlus, UserMinus, ShieldCheck, Mail, ShieldAlert, 
-  CheckCircle2, XCircle, Database, Plus, Trash2, Search, Building2, User, Download 
+  CheckCircle2, XCircle, Database, Plus, Trash2, Search, Building2, User, Download, KeyRound, Lock 
 } from 'lucide-react';
 
 export default function AdminPanel({ session }) {
@@ -56,10 +56,17 @@ export default function AdminPanel({ session }) {
   const [basesError, setBasesError] = useState(null);
   const [searchBase, setSearchBase] = useState('');
   
-  // Form State
+  // Form State - Bases
   const [newFranchise, setNewFranchise] = useState('');
   const [newBase, setNewBase] = useState('Domínio Base 1');
   const [formLoading, setFormLoading] = useState(false);
+
+  // Form State - New User Creation
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('collaborator');
+  const [userFormLoading, setUserFormLoading] = useState(false);
 
   // Editing State
   const [editingId, setEditingId] = useState(null);
@@ -161,6 +168,38 @@ export default function AdminPanel({ session }) {
       alert("Erro ao atualizar papel do usuário: " + err.message);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (!newUserEmail.trim() || !newUserPassword.trim()) {
+      alert("E-mail e senha são obrigatórios!");
+      return;
+    }
+
+    setUserFormLoading(true);
+    try {
+      const createdUser = await fetchFromApi('/api/admin/ti/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          full_name: newUserName.trim(),
+          email: newUserEmail.trim(),
+          password: newUserPassword,
+          role: newUserRole
+        })
+      });
+
+      setUsers(prev => [createdUser, ...prev]);
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserRole('collaborator');
+      alert(`Usuário ${createdUser.email} cadastrado com sucesso!`);
+    } catch (err) {
+      alert("Erro ao cadastrar usuário: " + err.message);
+    } finally {
+      setUserFormLoading(false);
     }
   };
 
@@ -337,6 +376,135 @@ export default function AdminPanel({ session }) {
                 {(visibleUsers || []).length} USUÁRIOS REGISTRADOS
               </div>
             </div>
+
+            {/* Formulário de Criação de Novos Acessos (Apenas Gerentes e Administradores) */}
+            {(isLocalManager || isLocalAdmin) && (
+              <div className="glass-panel" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '16px', marginBottom: '2rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.01)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.2rem' }}>
+                  <UserPlus size={16} color="var(--accent-blue)" />
+                  <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-main)' }}>Cadastrar Novo Acesso / Membro da Squad</span>
+                </div>
+                <form onSubmit={handleCreateUser} style={{ display: 'flex', gap: '1.2rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  
+                  {/* Nome */}
+                  <div style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nome Completo</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ex: João da Silva" 
+                      value={newUserName} 
+                      onChange={e => setNewUserName(e.target.value)} 
+                      required 
+                      style={{ 
+                        width: '100%',
+                        background: 'rgba(0,0,0,0.3)', 
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        color: '#fff',
+                        fontSize: '0.85rem',
+                        transition: 'all 0.3s'
+                      }}
+                      className="glowing-input"
+                    />
+                  </div>
+
+                  {/* E-mail */}
+                  <div style={{ flex: '1.5 1 220px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>E-mail de Acesso</label>
+                    <input 
+                      type="email" 
+                      placeholder="usuario@cfcontabilidade.com" 
+                      value={newUserEmail} 
+                      onChange={e => setNewUserEmail(e.target.value)} 
+                      required 
+                      style={{ 
+                        width: '100%',
+                        background: 'rgba(0,0,0,0.3)', 
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        color: '#fff',
+                        fontSize: '0.85rem',
+                        transition: 'all 0.3s'
+                      }}
+                      className="glowing-input"
+                    />
+                  </div>
+
+                  {/* Senha */}
+                  <div style={{ flex: '1 1 160px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Senha</label>
+                    <input 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={newUserPassword} 
+                      onChange={e => setNewUserPassword(e.target.value)} 
+                      required 
+                      minLength={6}
+                      style={{ 
+                        width: '100%',
+                        background: 'rgba(0,0,0,0.3)', 
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        color: '#fff',
+                        fontSize: '0.85rem',
+                        transition: 'all 0.3s'
+                      }}
+                      className="glowing-input"
+                    />
+                  </div>
+
+                  {/* Cargo / Role */}
+                  <div style={{ flex: '1 1 150px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cargo / Role</label>
+                    <select 
+                      value={newUserRole} 
+                      onChange={e => setNewUserRole(e.target.value)}
+                      style={{ 
+                        width: '100%', 
+                        padding: '10px 14px', 
+                        borderRadius: '10px', 
+                        background: 'rgba(0,0,0,0.3)', 
+                        border: '1px solid rgba(255,255,255,0.08)', 
+                        color: '#fff', 
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
+                      }}
+                      className="glowing-input"
+                    >
+                      <option value="collaborator">Colaborador</option>
+                      <option value="guest">Guest (Convidado)</option>
+                      {isLocalManager && <option value="administrator">Administrador</option>}
+                      {isLocalManager && <option value="manager">Gerente (Manager)</option>}
+                    </select>
+                  </div>
+
+                  {/* Botão Submit */}
+                  <button 
+                    type="submit" 
+                    className="auth-submit" 
+                    disabled={userFormLoading} 
+                    style={{ 
+                      flex: '0 0 auto', 
+                      padding: '10px 22px', 
+                      borderRadius: '10px', 
+                      fontWeight: '700', 
+                      fontSize: '0.85rem', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      height: '42px',
+                      marginTop: 'auto'
+                    }}
+                  >
+                    {userFormLoading ? 'Criando...' : <><Plus size={16} /> Criar Acesso</>}
+                  </button>
+
+                </form>
+              </div>
+            )}
  
             {squadError ? (
               <div style={{ padding: '2rem', background: 'rgba(239, 68, 68, 0.08)', borderRadius: '16px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>

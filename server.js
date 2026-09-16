@@ -104,7 +104,8 @@ const authenticateToken = (req, res, next) => {
 
 // FIX C-3: middleware para exigir papel admin
 const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin') {
+  const adminRoles = ['admin', 'administrator', 'manager'];
+  if (!adminRoles.includes(req.user?.role)) {
     return res.status(403).json({ error: 'Acesso restrito a administradores.' });
   }
   next();
@@ -359,12 +360,45 @@ app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
 app.get('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM user_profiles ORDER BY updated_at DESC'
+      'SELECT id, email, full_name, role, is_approved, created_at, updated_at FROM user_profiles ORDER BY updated_at DESC'
     );
     res.json(result.rows);
   } catch (err) {
     console.error('Erro ao buscar usuários:', err);
     res.status(500).json({ error: 'Erro ao buscar usuários.' });
+  }
+});
+
+app.post('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
+  const { email, password, full_name, role } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+  }
+
+  const allowedRoles = ['administrator', 'manager', 'collaborator', 'guest'];
+  const userRole = allowedRoles.includes(role) ? role : 'collaborator';
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const existing = await pool.query('SELECT id FROM user_profiles WHERE email = $1', [cleanEmail]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const insertRes = await pool.query(
+      `INSERT INTO user_profiles (email, password_hash, full_name, role, is_approved, updated_at)
+       VALUES ($1, $2, $3, $4, TRUE, NOW())
+       RETURNING id, email, full_name, role, is_approved, created_at, updated_at`,
+      [cleanEmail, hashedPassword, full_name?.trim() || cleanEmail.split('@')[0], userRole]
+    );
+
+    res.status(201).json(insertRes.rows[0]);
+  } catch (err) {
+    console.error('Erro ao criar usuário:', err);
+    res.status(500).json({ error: 'Erro ao cadastrar usuário no banco de dados.' });
   }
 });
 

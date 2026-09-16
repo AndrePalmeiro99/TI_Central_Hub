@@ -416,6 +416,63 @@ app.delete('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, r
   }
 });
 
+app.put('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
+  const { id, full_name, email, role, password } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: 'ID do usuário é obrigatório.' });
+  }
+
+  const cleanEmail = email ? email.trim().toLowerCase() : null;
+  const allowedRoles = ['administrator', 'manager', 'collaborator', 'guest'];
+  const userRole = role && allowedRoles.includes(role) ? role : undefined;
+
+  try {
+    // Se mudou o e-mail, verificar se já existe em outro usuário
+    if (cleanEmail) {
+      const existing = await pool.query('SELECT id FROM user_profiles WHERE email = $1 AND id != $2', [cleanEmail, id]);
+      if (existing.rows.length > 0) {
+        return res.status(400).json({ error: 'Este e-mail já pertence a outro usuário.' });
+      }
+    }
+
+    let query = `UPDATE user_profiles SET updated_at = NOW()`;
+    const params = [];
+    let idx = 1;
+
+    if (full_name !== undefined) {
+      query += `, full_name = $${idx++}`;
+      params.push(full_name.trim());
+    }
+    if (cleanEmail) {
+      query += `, email = $${idx++}`;
+      params.push(cleanEmail);
+    }
+    if (userRole) {
+      query += `, role = $${idx++}`;
+      params.push(userRole);
+    }
+    if (password && password.trim().length >= 6) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password.trim(), salt);
+      query += `, password_hash = $${idx++}`;
+      params.push(hashedPassword);
+    }
+
+    query += ` WHERE id = $${idx} RETURNING id, email, full_name, role, is_approved, updated_at`;
+    params.push(id);
+
+    const result = await pool.query(query, params);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Erro ao editar usuário:', err);
+    res.status(500).json({ error: 'Erro ao atualizar dados do usuário.' });
+  }
+});
+
 app.post('/api/admin/ti/users/role', authenticateToken, requireAdmin, async (req, res) => {
   const { target_user_id, new_role, new_approved } = req.body;
   try {

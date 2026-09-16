@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { 
   Users, UserPlus, UserMinus, ShieldCheck, Mail, ShieldAlert, 
-  CheckCircle2, XCircle, Database, Plus, Trash2, Search, Building2, User, Download, KeyRound, Lock 
+  CheckCircle2, XCircle, Database, Plus, Trash2, Search, Building2, User, Download, KeyRound, Lock, Edit3, X 
 } from 'lucide-react';
 
 export default function AdminPanel({ session }) {
@@ -68,10 +68,18 @@ export default function AdminPanel({ session }) {
   const [newUserRole, setNewUserRole] = useState('collaborator');
   const [userFormLoading, setUserFormLoading] = useState(false);
 
-  // Editing State
+  // Editing Bases State
   const [editingId, setEditingId] = useState(null);
   const [editingBase, setEditingBase] = useState('');
   const [editingFranchiseName, setEditingFranchiseName] = useState('');
+
+  // Editing User Modal State
+  const [editingUser, setEditingUser] = useState(null);
+  const [editUserName, setEditUserName] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
+  const [editUserRole, setEditUserRole] = useState('collaborator');
+  const [editUserPassword, setEditUserPassword] = useState('');
+  const [editUserLoading, setEditUserLoading] = useState(false);
 
   // Access control profile checks
   const loggedInUserProfile = React.useMemo(() => {
@@ -200,6 +208,50 @@ export default function AdminPanel({ session }) {
       alert("Erro ao cadastrar usuário: " + err.message);
     } finally {
       setUserFormLoading(false);
+    }
+  };
+
+  const handleOpenEditUser = (user) => {
+    setEditingUser(user);
+    setEditUserName(user.full_name || '');
+    setEditUserEmail(user.email || '');
+    setEditUserRole(user.role || 'collaborator');
+    setEditUserPassword('');
+  };
+
+  const handleSaveEditUser = async (e) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editUserEmail.trim()) {
+      alert("O e-mail não pode ser vazio!");
+      return;
+    }
+
+    setEditUserLoading(true);
+    try {
+      const payload = {
+        id: editingUser.id,
+        full_name: editUserName.trim(),
+        email: editUserEmail.trim(),
+        role: editUserRole
+      };
+
+      if (editUserPassword && editUserPassword.trim().length >= 6) {
+        payload.password = editUserPassword.trim();
+      }
+
+      const updated = await fetchFromApi('/api/admin/ti/users', {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+
+      setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
+      setEditingUser(null);
+      alert("Usuário atualizado com sucesso!");
+    } catch (err) {
+      alert("Erro ao atualizar usuário: " + err.message);
+    } finally {
+      setEditUserLoading(false);
     }
   };
 
@@ -583,75 +635,49 @@ export default function AdminPanel({ session }) {
 
                                 return (
                                   <>
-                                    {!user.is_approved ? (
-                                      <button 
-                                        className="tab-btn" 
-                                        style={{ background: 'var(--accent-green)', color: '#fff', fontSize: '0.7rem', padding: '6px 14px', borderRadius: '8px' }}
-                                        onClick={() => handleUpdateRole(user.id, 'guest', true)}
-                                        disabled={actionLoading === user.id}
-                                      >
-                                        {actionLoading === user.id ? '...' : 'Aprovar'}
-                                      </button>
-                                    ) : (
-                                      <>
-                                        {/* Gerentes e ADMs podem alterar cargos */}
-                                        {(isLocalManager || isLocalAdmin) && (
-                                          <>
-                                            {(user.role === 'guest' || user.role === 'ghost') ? (
-                                              <button 
-                                                className="tab-btn" 
-                                                style={{ background: 'var(--accent-blue)', color: '#fff', fontSize: '0.7rem', padding: '6px 14px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                onClick={() => handleUpdateRole(user.id, 'collaborator', true)}
-                                                disabled={actionLoading === user.id}
-                                              >
-                                                <UserPlus size={12} /> Tornar Colaborador
-                                              </button>
-                                            ) : (
-                                              <button 
-                                                className="tab-btn" 
-                                                style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.06)', fontSize: '0.7rem', padding: '6px 14px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                onClick={() => handleUpdateRole(user.id, 'guest', true)}
-                                                disabled={actionLoading === user.id}
-                                              >
-                                                <UserMinus size={12} /> Rebaixar
-                                              </button>
-                                            )}
+                                    {/* Botão Editar (Abre modal de edição completa) */}
+                                    <button 
+                                      className="tab-btn" 
+                                      style={{ 
+                                        background: 'rgba(59, 130, 246, 0.12)', 
+                                        color: 'var(--accent-blue)', 
+                                        border: '1px solid rgba(59, 130, 246, 0.25)', 
+                                        fontSize: '0.72rem', 
+                                        padding: '6px 14px', 
+                                        borderRadius: '8px', 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '5px',
+                                        fontWeight: '600'
+                                      }}
+                                      title="Editar Usuário (Nome, E-mail, Role e Senha)"
+                                      onClick={() => handleOpenEditUser(user)}
+                                      disabled={actionLoading === user.id}
+                                    >
+                                      <Edit3 size={13} /> Editar
+                                    </button>
 
-                                            {/* Apenas Gerente pode promover alguém a Administrador */}
-                                            {isLocalManager && user.role !== 'administrator' && user.role !== 'admin' && (
-                                              <button 
-                                                className="tab-btn" 
-                                                style={{ background: 'var(--accent-teal)', color: '#fff', fontSize: '0.7rem', padding: '6px 14px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                onClick={() => handleUpdateRole(user.id, 'administrator', true)}
-                                                disabled={actionLoading === user.id}
-                                              >
-                                                <ShieldCheck size={12} /> Tornar ADM
-                                              </button>
-                                            )}
-                                          </>
-                                        )}
-                                        
-                                        <button 
-                                          className="tab-btn" 
-                                          style={{ background: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-red)', border: '1px solid rgba(239,68,68,0.15)', fontSize: '0.7rem', padding: '6px 14px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                          onClick={() => handleUpdateRole(user.id, user.role, false)}
-                                          disabled={actionLoading === user.id}
-                                        >
-                                          <XCircle size={12} /> Revogar
-                                        </button>
-                                      </>
-                                    )}
-
-                                    {/* Apenas Gerentes ou ADMs (para não-ADMs) podem deletar perfis */}
+                                    {/* Botão Remover (Exclui permanentemente da listagem e banco) */}
                                     {(isLocalManager || (isLocalAdmin && !isTargetAdmin)) && (
                                       <button 
                                         className="tab-btn" 
-                                        style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-red)', border: '1px solid rgba(239,68,68,0.25)', fontSize: '0.7rem', padding: '6px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                                        title="Excluir Usuário permanentemente"
+                                        style={{ 
+                                          background: 'rgba(239, 68, 68, 0.12)', 
+                                          color: 'var(--accent-red)', 
+                                          border: '1px solid rgba(239, 68, 68, 0.25)', 
+                                          fontSize: '0.72rem', 
+                                          padding: '6px 14px', 
+                                          borderRadius: '8px', 
+                                          display: 'inline-flex', 
+                                          alignItems: 'center', 
+                                          gap: '5px',
+                                          fontWeight: '600'
+                                        }}
+                                        title="Remover permanentemente"
                                         onClick={() => handleDeleteUser(user.id)}
                                         disabled={actionLoading === user.id}
                                       >
-                                        <Trash2 size={13} />
+                                        <Trash2 size={13} /> Remover
                                       </button>
                                     )}
                                   </>
@@ -987,6 +1013,206 @@ export default function AdminPanel({ session }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modal de Edição Completa de Usuário */}
+      {editingUser && (
+        <div className="modal-overlay" onClick={() => setEditingUser(null)} style={{ zIndex: 9999 }}>
+          <div 
+            className="glass-panel modal-content" 
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '520px',
+              width: '90%',
+              padding: '2.5rem',
+              borderRadius: '20px',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'linear-gradient(180deg, #141822 0%, #0d1017 100%)',
+              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.8)',
+              position: 'relative'
+            }}
+          >
+            {/* Fechar Modal */}
+            <button 
+              onClick={() => setEditingUser(null)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                color: 'var(--text-muted)',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={16} />
+            </button>
+
+            {/* Cabeçalho do Modal */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1.8rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '1rem' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
+                <Edit3 size={20} />
+              </div>
+              <div>
+                <h3 className="font-outfit" style={{ fontSize: '1.25rem', color: 'var(--text-main)', fontWeight: '800', margin: 0 }}>
+                  Editar Acesso
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Atualize as credenciais e permissões do usuário
+                </span>
+              </div>
+            </div>
+
+            {/* Formulário de Edição */}
+            <form onSubmit={handleSaveEditUser} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+              
+              {/* Nome Completo */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Nome Completo
+                </label>
+                <input 
+                  type="text" 
+                  value={editUserName} 
+                  onChange={e => setEditUserName(e.target.value)} 
+                  required
+                  placeholder="Nome do usuário"
+                  style={{
+                    width: '100%',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    padding: '11px 14px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    fontSize: '0.85rem'
+                  }}
+                  className="glowing-input"
+                />
+              </div>
+
+              {/* E-mail de Acesso */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  E-mail de Acesso
+                </label>
+                <input 
+                  type="email" 
+                  value={editUserEmail} 
+                  onChange={e => setEditUserEmail(e.target.value)} 
+                  required
+                  placeholder="usuario@cfcontabilidade.com"
+                  style={{
+                    width: '100%',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    padding: '11px 14px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    fontSize: '0.85rem'
+                  }}
+                  className="glowing-input"
+                />
+              </div>
+
+              {/* Cargo / Role */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Cargo / Permissão (Role)
+                </label>
+                <select 
+                  value={editUserRole} 
+                  onChange={e => setEditUserRole(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: '10px',
+                    background: '#17191e',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem'
+                  }}
+                  className="glowing-input"
+                >
+                  <option value="collaborator">Colaborador</option>
+                  <option value="guest">Guest (Convidado)</option>
+                  <option value="administrator">Administrador</option>
+                  {isLocalManager && <option value="manager">Gerente (Manager)</option>}
+                </select>
+              </div>
+
+              {/* Nova Senha (Opcional) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Nova Senha (deixe em branco para não alterar)
+                </label>
+                <input 
+                  type="password" 
+                  value={editUserPassword} 
+                  onChange={e => setEditUserPassword(e.target.value)} 
+                  placeholder="Nova senha (mínimo 6 dígitos)"
+                  minLength={6}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    padding: '11px 14px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    fontSize: '0.85rem'
+                  }}
+                  className="glowing-input"
+                />
+              </div>
+
+              {/* Botões de Ação */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '1rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    color: 'var(--text-muted)',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="auth-submit"
+                  disabled={editUserLoading}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '10px',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  {editUserLoading ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

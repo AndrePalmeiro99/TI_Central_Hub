@@ -101,15 +101,37 @@ function App() {
 
     // Local session token check
     const storedToken = localStorage.getItem('session_token');
+    const storedUserStr = localStorage.getItem('session_user');
     if (storedToken) {
+      let restoredUser = { 
+        email: 'ti@cfcontabilidade.com', 
+        name: 'Administrador TI',
+        full_name: 'Administrador TI',
+        role: 'manager',
+        user_metadata: { full_name: 'Administrador TI', role: 'manager', is_approved: true } 
+      };
+
+      if (storedUserStr) {
+        try {
+          const parsed = JSON.parse(storedUserStr);
+          restoredUser = {
+            ...parsed,
+            full_name: parsed.full_name || parsed.name,
+            user_metadata: {
+              ...parsed.user_metadata,
+              full_name: parsed.full_name || parsed.name || parsed.user_metadata?.full_name,
+              role: parsed.role || parsed.user_metadata?.role || 'collaborator'
+            }
+          };
+        } catch (e) {
+          console.error("Erro ao analisar session_user:", e);
+        }
+      }
+
       setSession({
         access_token: storedToken,
-        role: 'manager',
-        user: { 
-          email: 'ti@cfcontabilidade.com', 
-          role: 'manager',
-          user_metadata: { role: 'manager', is_approved: true } 
-        }
+        role: restoredUser.role || restoredUser.user_metadata?.role,
+        user: restoredUser
       });
     }
     setAuthLoading(false);
@@ -1878,9 +1900,19 @@ function App() {
   
             <div className="profile-menu" onClick={() => setShowProfileModal(true)} style={{ cursor: 'pointer' }}>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: '700' }}>{session?.user?.user_metadata?.full_name || session?.email || 'Usuário TI'}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: '700' }}>
+                  {session?.user?.full_name || session?.user?.name || session?.user?.user_metadata?.full_name || session?.email || 'Usuário'}
+                </div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                  {isManager ? 'Gerente' : (isGuest ? 'Visitante' : 'Colaborador')}
+                  {(() => {
+                    const r = (session?.user?.role || session?.user?.user_metadata?.role || session?.role || '').toLowerCase();
+                    if (r === 'manager') return 'Gerente';
+                    if (r === 'administrator' || r === 'admin') return 'Administrador';
+                    if (r === 'collaborator') return 'Colaborador';
+                    if (r === 'guest') return 'Visitante (Guest)';
+                    if (r === 'ghost') return 'Ghost (Mock)';
+                    return r ? r.toUpperCase() : 'Colaborador';
+                  })()}
                 </div>
               </div>
               <User size={20} color="var(--accent-blue)" />
@@ -2560,11 +2592,17 @@ function App() {
                   boxShadow: '0 0 20px rgba(59, 130, 246, 0.3)'
                 }}
               >
-                {(session?.user?.user_metadata?.full_name || 'U').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                {((session?.user?.full_name || session?.user?.name || session?.user?.user_metadata?.full_name || session?.email || 'U'))
+                  .split(' ')
+                  .filter(Boolean)
+                  .map(n => n[0])
+                  .join('')
+                  .substring(0, 2)
+                  .toUpperCase()}
               </div>
               <div style={{ textAlign: 'center' }}>
                 <h3 className="font-outfit" style={{ fontSize: '1.35rem', color: 'var(--text-main)', fontWeight: '900', margin: 0 }}>
-                  {session?.user?.user_metadata?.full_name || 'Usuário TI'}
+                  {session?.user?.full_name || session?.user?.name || session?.user?.user_metadata?.full_name || 'Usuário'}
                 </h3>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
                   Membro do HUB de TI
@@ -2587,9 +2625,32 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
                   <span style={{ fontSize: '0.58rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>Função & Permissão</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                    <span className={`status-badge ${isManager ? 'badge-orange' : (isGuest ? 'badge-teal' : 'badge-green')}`} style={{ fontSize: '0.62rem', padding: '2px 8px' }}>
-                      {isManager ? 'Administrador' : (isGuest ? 'Visitante' : 'Colaborador')}
-                    </span>
+                    {(() => {
+                      const r = (session?.user?.role || session?.user?.user_metadata?.role || session?.role || '').toLowerCase();
+                      const roleBadgeClass = r === 'manager' 
+                        ? 'badge-blue' 
+                        : (r === 'administrator' || r === 'admin')
+                          ? 'badge-teal'
+                          : r === 'collaborator'
+                            ? 'badge-green'
+                            : 'badge-orange';
+
+                      const roleLabel = r === 'manager'
+                        ? 'Gerente (Manager)'
+                        : (r === 'administrator' || r === 'admin')
+                          ? 'Administrador'
+                          : r === 'collaborator'
+                            ? 'Colaborador'
+                            : r === 'guest'
+                              ? 'Visitante (Guest)'
+                              : (r ? r.toUpperCase() : 'Colaborador');
+
+                      return (
+                        <span className={`status-badge ${roleBadgeClass}`} style={{ fontSize: '0.62rem', padding: '2px 8px', fontWeight: '700' }}>
+                          {roleLabel}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

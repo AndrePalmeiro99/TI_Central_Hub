@@ -37,8 +37,16 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
       RateLimiter.reset(email);
       const mappedUser = {
         ...data.user,
-        user_metadata: { role: data.user?.role || 'user', is_approved: true }
+        full_name: data.user?.name || data.user?.full_name,
+        user_metadata: { 
+          full_name: data.user?.name || data.user?.full_name,
+          role: data.user?.role || 'user', 
+          is_approved: true 
+        }
       };
+      if (data.user) {
+        localStorage.setItem('session_user', JSON.stringify(mappedUser));
+      }
       onLoginSuccess({ user: mappedUser, access_token: data.access_token });
     } catch (err) {
       RateLimiter.registerFailure(email);

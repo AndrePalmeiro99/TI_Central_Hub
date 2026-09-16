@@ -7,8 +7,10 @@
 -- -------------------------------------------------------------
 -- 1. TABELA user_profiles
 -- -------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 CREATE TABLE IF NOT EXISTS user_profiles (
-  id            SERIAL PRIMARY KEY,
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email         TEXT NOT NULL UNIQUE,
   full_name     TEXT,
   password_hash TEXT,
@@ -16,9 +18,16 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   -- roles válidos: 'admin' | 'administrator' | 'manager'
   --                'collaborator' | 'guest' | 'ghost' | 'user'
   is_approved   BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Garantir default UUID caso a coluna id seja UUID sem default
+DO $$
+BEGIN
+  ALTER TABLE user_profiles ALTER COLUMN id SET DEFAULT gen_random_uuid();
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END$$;
 
 -- Colunas adicionadas em versões posteriores (idempotente)
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT FALSE;

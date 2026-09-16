@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
 import rateLimit from 'express-rate-limit';
+import { randomUUID } from 'crypto';
 
 dotenv.config();
 
@@ -208,11 +209,12 @@ app.post('/api/auth/register', loginLimiter, async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    const userId = randomUUID();
 
     const insertRes = await pool.query(
-      `INSERT INTO user_profiles (email, password_hash, full_name, role)
-       VALUES ($1, $2, $3, 'user') RETURNING id, email, full_name, role`,
-      [email, hashedPassword, name || email.split('@')[0]]
+      `INSERT INTO user_profiles (id, email, password_hash, full_name, role)
+       VALUES ($1, $2, $3, $4, 'user') RETURNING id, email, full_name, role`,
+      [userId, email, hashedPassword, name || email.split('@')[0]]
     );
 
     const user = insertRes.rows[0];
@@ -387,12 +389,13 @@ app.post('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    const newId = randomUUID();
 
     const insertRes = await pool.query(
-      `INSERT INTO user_profiles (email, password_hash, full_name, role, is_approved, updated_at)
-       VALUES ($1, $2, $3, $4, TRUE, NOW())
+      `INSERT INTO user_profiles (id, email, password_hash, full_name, role, is_approved, updated_at)
+       VALUES ($1, $2, $3, $4, $5, TRUE, NOW())
        RETURNING id, email, full_name, role, is_approved, updated_at`,
-      [cleanEmail, hashedPassword, full_name?.trim() || cleanEmail.split('@')[0], userRole]
+      [newId, cleanEmail, hashedPassword, full_name?.trim() || cleanEmail.split('@')[0], userRole]
     );
 
     res.status(201).json(insertRes.rows[0]);

@@ -699,59 +699,34 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       return;
     }
 
-    let onetyData = [];
-    let transbordosData = [];
-    let saidasData = [];
-
-    try {
-      onetyData = await fetchOnetyTasks();
-    } catch (err) {
-      console.error("Falha ao buscar tarefas do Onety:", err);
-    }
-
-    try {
-      transbordosData = await fetchOnetyTransbordos();
-    } catch (err) {
-      console.error("Falha ao buscar transbordos do Onety:", err);
-    }
-
-    try {
-      saidasData = await fetchOnetySaidas();
-    } catch (err) {
-      console.error("Falha ao buscar saídas do Onety:", err);
-    }
-
-    let prsData = [];
-    try {
-      prsData = await fetchOnetyPrTasks();
-    } catch (err) {
-      console.error("Falha ao buscar PRs do Onety:", err);
-    }
+    // FIX PERF: paralelizar todos os fetches externos — sem await serial
+    const [onetyData, transbordosData, saidasData, prsData] = await Promise.all([
+      fetchOnetyTasks().catch(err => { console.error("Falha ao buscar tarefas do Onety:", err); return []; }),
+      fetchOnetyTransbordos().catch(err => { console.error("Falha ao buscar transbordos do Onety:", err); return []; }),
+      fetchOnetySaidas().catch(err => { console.error("Falha ao buscar saídas do Onety:", err); return []; }),
+      fetchOnetyPrTasks().catch(err => { console.error("Falha ao buscar PRs do Onety:", err); return []; }),
+    ]);
 
     try {
 
       let metaMap = {};
       let fBasesMap = {};
-      
-      try {
-        const metaList = await dbApi.getTarefaMetadata();
-        if (Array.isArray(metaList)) {
-          metaMap = metaList.reduce((acc, row) => {
-            acc[row.id] = row;
-            return acc;
-          }, {});
-        }
-      } catch (e) {
-        console.debug("Backend local / PostgreSQL offline ou sem sessão ativa para metadados.");
+
+      // FIX PERF: paralelizar metadata + royalties do backend
+      const [metaList, royaltiesRaw] = await Promise.all([
+        dbApi.getTarefaMetadata().catch(e => { console.debug("Backend local / PostgreSQL offline ou sem sessão ativa para metadados."); return []; }),
+        dbApi.getFranchiseRoyalties().catch(e => { console.debug("Sem retorno de franchise_bases do backend."); return []; }),
+      ]);
+
+      if (Array.isArray(metaList)) {
+        metaMap = metaList.reduce((acc, row) => {
+          acc[row.id] = row;
+          return acc;
+        }, {});
       }
 
+
       // FIX M-1: chamada única de getFranchiseRoyalties — derivar ambos os mapas
-      let royaltiesRaw = [];
-      try {
-        royaltiesRaw = await dbApi.getFranchiseRoyalties();
-      } catch (e) {
-        console.debug("Sem retorno de franchise_bases do backend.");
-      }
 
       if (Array.isArray(royaltiesRaw) && royaltiesRaw.length > 0) {
         fBasesMap = royaltiesRaw.reduce((acc, row) => {

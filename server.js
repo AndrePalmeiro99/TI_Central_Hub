@@ -687,7 +687,7 @@ app.post('/api/admin/ti/royalties', authenticateToken, requireAdmin, async (req,
 // 5. PROXY TRANSPARENTE ONETY NO BACKEND
 // ==========================================
 // FIX C-2: chave não pode ter fallback hardcoded no código-fonte
-const ONETY_API_KEY = process.env.VITE_ONETY_API_KEY || '';
+const ONETY_API_KEY = process.env.ONETY_API_KEY || process.env.VITE_ONETY_API_KEY || '';
 
 // Proxy Onety: autenticação opcional (frontend mesmo-domínio usa token se disponível)
 const authenticateTokenOptional = (req, res, next) => {

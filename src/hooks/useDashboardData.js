@@ -105,6 +105,13 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       headers,
     });
 
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem('session_token');
+      localStorage.removeItem('session_user');
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
     if (!response.ok) {
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }

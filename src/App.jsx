@@ -103,6 +103,23 @@ function App() {
     const storedToken = localStorage.getItem('session_token');
     const storedUserStr = localStorage.getItem('session_user');
     if (storedToken) {
+      // Verifica expiração do token (decode sem verificar assinatura)
+      try {
+        const payload = JSON.parse(atob(storedToken.split('.')[1]));
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          localStorage.removeItem('session_token');
+          localStorage.removeItem('session_user');
+          setAuthLoading(false);
+          return;
+        }
+      } catch (_) {
+        // token malformado — descarta
+        localStorage.removeItem('session_token');
+        localStorage.removeItem('session_user');
+        setAuthLoading(false);
+        return;
+      }
+
       let restoredUser = { 
         email: 'ti@cfcontabilidade.com', 
         name: 'Administrador TI',
@@ -135,6 +152,15 @@ function App() {
       });
     }
     setAuthLoading(false);
+  }, []);
+
+  // Logout automático quando token expirar ou for inválido (401/403 de qualquer rota autenticada)
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setSession(null);
+    };
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => window.removeEventListener('auth:expired', handleAuthExpired);
   }, []);
 
   // Dashboard Data Hook

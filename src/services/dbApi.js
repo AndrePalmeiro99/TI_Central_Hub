@@ -4,12 +4,25 @@
 
 const API_BASE = '';
 
+function clearSession() {
+  localStorage.removeItem('session_token');
+  localStorage.removeItem('session_user');
+  window.dispatchEvent(new CustomEvent('auth:expired'));
+}
+
 function getAuthHeaders() {
   const token = localStorage.getItem('session_token');
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
+}
+
+function checkAuthStatus(res) {
+  if (res.status === 401 || res.status === 403) {
+    clearSession();
+  }
+  return res;
 }
 
 export const dbApi = {
@@ -82,47 +95,47 @@ export const dbApi = {
 
   // 2. Audit Logs
   async getAuditLogs(limit = 50) {
-    const res = await fetch(`${API_BASE}/api/audit-logs?limit=${limit}`, {
+    const res = checkAuthStatus(await fetch(`${API_BASE}/api/audit-logs?limit=${limit}`, {
       headers: getAuthHeaders()
-    });
+    }));
     if (!res.ok) throw new Error('Erro ao buscar logs de auditoria');
     return res.json();
   },
 
   async saveAuditLog(logEntry) {
-    const res = await fetch(`${API_BASE}/api/audit-logs`, {
+    const res = checkAuthStatus(await fetch(`${API_BASE}/api/audit-logs`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(logEntry)
-    });
+    }));
     if (!res.ok) throw new Error('Erro ao registrar auditoria');
     return res.json();
   },
 
   // 3. Tarefa Metadata
   async getTarefaMetadata() {
-    const res = await fetch(`${API_BASE}/api/tarefa-metadata`, {
+    const res = checkAuthStatus(await fetch(`${API_BASE}/api/tarefa-metadata`, {
       headers: getAuthHeaders()
-    });
+    }));
     if (!res.ok) throw new Error('Erro ao buscar metadados');
     return res.json();
   },
 
   async saveTarefaMetadata(metadata) {
-    const res = await fetch(`${API_BASE}/api/tarefa-metadata`, {
+    const res = checkAuthStatus(await fetch(`${API_BASE}/api/tarefa-metadata`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(metadata)
-    });
+    }));
     if (!res.ok) throw new Error('Erro ao salvar metadados');
     return res.json();
   },
 
   // 4. Franchise Royalties
   async getFranchiseRoyalties() {
-    const res = await fetch(`${API_BASE}/api/franchise-royalties`, {
+    const res = checkAuthStatus(await fetch(`${API_BASE}/api/franchise-royalties`, {
       headers: getAuthHeaders()
-    });
+    }));
     if (!res.ok) throw new Error('Erro ao buscar franquias');
     return res.json();
   }

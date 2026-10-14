@@ -488,9 +488,9 @@ app.post('/api/admin/ti/users/role', authenticateToken, requireAdmin, async (req
 });
 
 // ==========================================
-// ADMIN — BASES (franchise_royalties_config)
+// BASES (franchise_royalties_config)
 // ==========================================
-app.get('/api/admin/ti/bases', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/api/admin/ti/bases', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT * FROM franchise_royalties_config ORDER BY franchise_name ASC'

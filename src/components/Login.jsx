@@ -320,7 +320,7 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
                   onClick={onShowRegister}
                   style={{ width: '100%' }}
                 >
-                  <UserCircle2 size={18} /> Solicitar Acesso para Demonstração
+                  <UserCircle2 size={18} /> Cadastrar acesso a plataforma
                 </button>
               </form>
             </motion.div>

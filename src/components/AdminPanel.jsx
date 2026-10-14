@@ -32,11 +32,15 @@ export default function AdminPanel({ session }) {
       headers,
     });
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       localStorage.removeItem('session_token');
       localStorage.removeItem('session_user');
       window.dispatchEvent(new CustomEvent('auth:expired'));
       throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+
+    if (response.status === 403) {
+      throw new Error(`API Error: 403 Forbidden - Acesso não autorizado`);
     }
 
     if (!response.ok) {
@@ -109,6 +113,12 @@ export default function AdminPanel({ session }) {
                             
   const isLocalAdmin = loggedInUserRole === 'administrator' || loggedInUserRole === 'admin' || isLocalAdminEmail;
   const isLocalCollaborator = loggedInUserRole === 'collaborator';
+  // Apenas Gerente/Administrador gerenciam Squad e editam bases
+  const canManageAccess = isLocalManager || isLocalAdmin;
+
+  useEffect(() => {
+    if (loggedInUserProfile && !canManageAccess && activeSubTab !== 'bases') setActiveSubTab('bases');
+  }, [loggedInUserProfile, canManageAccess, activeSubTab]);
 
   const visibleUsers = React.useMemo(() => {
     if (!users) return [];
@@ -116,8 +126,8 @@ export default function AdminPanel({ session }) {
     return users.filter(u => u.id === currentUser?.id || u.email?.toLowerCase() === loggedInUserEmail);
   }, [users, isLocalManager, isLocalAdmin, currentUser, loggedInUserEmail]);
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Tem certeza que deseja excluir permanentemente este usuário da base de dados?")) return;
+  const handleDeleteUser = async (userId, confirmMsg = "Tem certeza que deseja excluir permanentemente este usuário da base de dados?") => {
+    if (!window.confirm(confirmMsg)) return;
     setActionLoading(userId);
     try {
       await fetchFromApi(`/api/admin/ti/users?id=${userId}`, { method: 'DELETE' });
@@ -159,13 +169,17 @@ export default function AdminPanel({ session }) {
   };
 
   useEffect(() => {
-    fetchUsers();
+    if (canManageAccess) {
+      fetchUsers();
+    } else {
+      setLoadingUsers(false);
+    }
     fetchBases();
     
     if (session?.user) {
       setCurrentUser(session.user);
     }
-  }, [session]);
+  }, [session, canManageAccess]);
 
   const handleUpdateRole = async (userId, newRole, approved) => {
     setActionLoading(userId);
@@ -359,65 +373,67 @@ export default function AdminPanel({ session }) {
 
   return (
     <div className="admin-panel" style={{ width: '100%' }}>
-      {/* Sub tabs navigation - Elegant pill capsule selector */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2.5rem' }}>
-        <div style={{ 
-          display: 'inline-flex', 
-          background: 'rgba(0, 0, 0, 0.35)', 
-          border: '1px solid rgba(255, 255, 255, 0.05)', 
-          padding: '5px', 
-          borderRadius: '16px',
-          backdropFilter: 'blur(12px)',
-          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
-        }}>
-          <button 
-            onClick={() => setActiveSubTab('squad')}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '10px',
-              padding: '10px 24px',
-              borderRadius: '12px',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: activeSubTab === 'squad' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-              color: activeSubTab === 'squad' ? 'var(--accent-blue)' : 'var(--text-muted)',
-              border: activeSubTab === 'squad' ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid transparent',
-              boxShadow: activeSubTab === 'squad' ? 'inset 0 1px 1px rgba(255,255,255,0.05)' : 'none'
-            }}
-          >
-            <Users size={15} style={{ opacity: activeSubTab === 'squad' ? 1 : 0.6 }} /> 
-            <span>Gestão de Squad</span>
-          </button>
-          
-          <button 
-            onClick={() => setActiveSubTab('bases')}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '10px',
-              padding: '10px 24px',
-              borderRadius: '12px',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: activeSubTab === 'bases' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-              color: activeSubTab === 'bases' ? 'var(--accent-blue)' : 'var(--text-muted)',
-              border: activeSubTab === 'bases' ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid transparent',
-              boxShadow: activeSubTab === 'bases' ? 'inset 0 1px 1px rgba(255,255,255,0.05)' : 'none'
-            }}
-          >
-            <Database size={15} style={{ opacity: activeSubTab === 'bases' ? 1 : 0.6 }} /> 
-            <span>Mapeamento de Bases</span>
-          </button>
+      {/* Sub tabs navigation - Elegant pill capsule selector (apenas para quem tem múltiplas abas) */}
+      {canManageAccess && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2.5rem' }}>
+          <div style={{ 
+            display: 'inline-flex', 
+            background: 'rgba(0, 0, 0, 0.35)', 
+            border: '1px solid rgba(255, 255, 255, 0.05)', 
+            padding: '5px', 
+            borderRadius: '16px',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+          }}>
+            <button 
+              onClick={() => setActiveSubTab('squad')}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '10px',
+                padding: '10px 24px',
+                borderRadius: '12px',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                background: activeSubTab === 'squad' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                color: activeSubTab === 'squad' ? 'var(--accent-blue)' : 'var(--text-muted)',
+                border: activeSubTab === 'squad' ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid transparent',
+                boxShadow: activeSubTab === 'squad' ? 'inset 0 1px 1px rgba(255,255,255,0.05)' : 'none'
+              }}
+            >
+              <Users size={15} style={{ opacity: activeSubTab === 'squad' ? 1 : 0.6 }} /> 
+              <span>Gestão de Squad</span>
+            </button>
+            
+            <button 
+              onClick={() => setActiveSubTab('bases')}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '10px',
+                padding: '10px 24px',
+                borderRadius: '12px',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                background: activeSubTab === 'bases' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                color: activeSubTab === 'bases' ? 'var(--accent-blue)' : 'var(--text-muted)',
+                border: activeSubTab === 'bases' ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid transparent',
+                boxShadow: activeSubTab === 'bases' ? 'inset 0 1px 1px rgba(255,255,255,0.05)' : 'none'
+              }}
+            >
+              <Database size={15} style={{ opacity: activeSubTab === 'bases' ? 1 : 0.6 }} /> 
+              <span>Mapeamento de Bases</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <AnimatePresence mode="wait">
-        {activeSubTab === 'squad' ? (
+        {activeSubTab === 'squad' && canManageAccess ? (
           <motion.div
             key="squad"
             initial={{ opacity: 0, y: 12 }}
@@ -634,9 +650,41 @@ export default function AdminPanel({ session }) {
                                 // Ninguém pode editar o Gerente Felipe (nem o próprio gerente por esta UI)
                                 if (isTargetManager) return <span style={{ fontSize: '0.75rem', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Protegido (Gerente)</span>;
 
+                                // Apenas Gerente ou Administrador podem gerenciar acessos
+                                if (!isLocalManager && !isLocalAdmin) {
+                                  return <span style={{ fontSize: '0.75rem', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Sem Permissão</span>;
+                                }
+
                                 // ADM comum não pode mexer em outros ADMs
                                 if (isTargetAdmin && !isLocalManager) {
                                   return <span style={{ fontSize: '0.75rem', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Sem Permissão</span>;
+                                }
+
+                                // Solicitação pendente: Aceitar / Recusar
+                                if (!user.is_approved) {
+                                  const btnBase = { fontSize: '0.72rem', padding: '6px 14px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: '600' };
+                                  return (
+                                    <>
+                                      <button
+                                        className="tab-btn"
+                                        style={{ ...btnBase, background: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-green)', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+                                        title="Aprovar como colaborador"
+                                        onClick={() => handleUpdateRole(user.id, 'collaborator', true)}
+                                        disabled={actionLoading === user.id}
+                                      >
+                                        <CheckCircle2 size={13} /> Aceitar acesso
+                                      </button>
+                                      <button
+                                        className="tab-btn"
+                                        style={{ ...btnBase, background: 'rgba(239, 68, 68, 0.12)', color: 'var(--accent-red)', border: '1px solid rgba(239, 68, 68, 0.25)' }}
+                                        title="Recusar e remover solicitação"
+                                        onClick={() => handleDeleteUser(user.id, `Recusar acesso de ${user.full_name || user.email}? A solicitação será removida.`)}
+                                        disabled={actionLoading === user.id}
+                                      >
+                                        <XCircle size={13} /> Recusar acesso
+                                      </button>
+                                    </>
+                                  );
                                 }
 
                                 return (
@@ -720,6 +768,7 @@ export default function AdminPanel({ session }) {
               </div>
 
               {/* Horizontal, compact Form for adding new mappings */}
+              {canManageAccess && (
               <div className="glass-panel" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '16px', marginBottom: '2rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.01)' }}>
                 <form onSubmit={handleAddBase} style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                   
@@ -795,6 +844,7 @@ export default function AdminPanel({ session }) {
 
                 </form>
               </div>
+              )}
               {/* List Section - Full Width */}
               <div>
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '1.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -874,7 +924,7 @@ export default function AdminPanel({ session }) {
                           <th style={{ padding: '1.2rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: '700' }}>Franquia / Empresa</th>
                           <th style={{ padding: '1.2rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: '700' }}>Base Assinalada</th>
                           <th style={{ padding: '1.2rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: '700' }}>Cadastrado Por</th>
-                          <th style={{ padding: '1.2rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'right' }}>Ações</th>
+                          {canManageAccess && <th style={{ padding: '1.2rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'right' }}>Ações</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -933,6 +983,7 @@ export default function AdminPanel({ session }) {
                                   <span>{base.created_by || 'Sistema'}</span>
                                 </div>
                               </td>
+                              {canManageAccess && (
                               <td style={{ padding: '1rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
                                   {isEditing ? (
@@ -976,12 +1027,13 @@ export default function AdminPanel({ session }) {
                                   )}
                                 </div>
                               </td>
+                              )}
                             </tr>
                           );
                         })}
                         {filteredBases.length === 0 && (
                           <tr>
-                            <td colSpan="4" style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum mapeamento de franquia encontrado.</td>
+                            <td colSpan={canManageAccess ? 4 : 3} style={{ padding: '3rem 2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum mapeamento de franquia encontrado.</td>
                           </tr>
                         )}
                       </tbody>

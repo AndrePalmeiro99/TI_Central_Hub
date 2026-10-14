@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { dbApi } from '../services/dbApi';
-import { User, Mail, Lock, ChevronRight, ArrowLeft, CheckCircle2, ShieldAlert, Building2 } from 'lucide-react';
+import { User, Mail, Lock, ChevronRight, ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { RateLimiter } from '../security/RateLimiter';
 
 export default function Register({ onBackToLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [empresa, setEmpresa] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -82,11 +81,6 @@ export default function Register({ onBackToLogin }) {
           <div className="auth-input-group">
             <label><User size={14} /> Nome Completo</label>
             <input type="text" placeholder="Seu nome" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-          </div>
-
-          <div className="auth-input-group">
-            <label><Building2 size={14} /> Empresa / Franquia</label>
-            <input type="text" placeholder="Nome da sua unidade" value={empresa} onChange={(e) => setEmpresa(e.target.value)} required />
           </div>
 
           <div className="auth-input-group">

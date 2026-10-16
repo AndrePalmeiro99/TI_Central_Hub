@@ -1998,13 +1998,23 @@ function App() {
                   <div className="glass-panel breakdown-card">
                     <MonthlyTrendChart data={dashboardData} />
                   </div>
-                  <div className="glass-panel breakdown-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                      <h3 className="font-outfit">Distribuição por Sistema</h3>
+                  <div className="glass-panel breakdown-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem 1.5rem', minHeight: '320px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', color: 'var(--accent-blue)' }}>
+                      <Users size={24} />
                     </div>
-                    <div className="scroll-list">
-                      <SourceBreakdown data={dataMesAtual} franchiseBasesMap={franchiseBasesMap} allTasks={dashboardData} />
-                    </div>
+                    <h3 className="font-outfit" style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-main)' }}>
+                      Módulo em Atualização
+                    </h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', maxWidth: '320px', lineHeight: '1.5', margin: '0 auto 1.25rem' }}>
+                      Esta seção está sendo reestruturada para integração direta com as métricas e dados da aba <strong>Equipe</strong>.
+                    </p>
+                    <button 
+                      className="tab-btn"
+                      onClick={() => setActiveTab('colaboradores')}
+                      style={{ fontSize: '0.75rem', padding: '8px 16px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+                    >
+                      <Users size={14} /> Ir para Equipe
+                    </button>
                   </div>
                 </div>
 

@@ -474,6 +474,84 @@ export function MonthlyTrendChart({ data }) {
   );
 }
 
+// Resumo compacto de performance da equipe (mês atual) para a página inicial
+export function TeamPerformanceSummary({ data, onOpenTeam }) {
+  const stats = useMemo(() => {
+    if (!data) return [];
+    const now = new Date();
+    const parse = (s) => {
+      if (!s) return new Date(0);
+      return new Date(s.includes(' ') ? s.replace(' ', 'T') : s);
+    };
+    const monthData = data.filter(d => {
+      const dt = parse(d.created_at);
+      return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
+    });
+    const daysCount = Math.max(1, now.getDate());
+    const defaultColabs = ['Pedro (CF-TI)', 'André (CF-TI)', 'Gabriel (CF-TI)'];
+    const active = monthData.filter(d => d.colaborador && d.colaborador !== 'Pendente' && d.colaborador.trim() !== '').map(d => d.colaborador);
+    const colabs = [...new Set([...active, ...defaultColabs])];
+    return colabs.map(c => {
+      const cData = monthData.filter(d => d.colaborador === c);
+      const total = cData.length;
+      const concluidas = cData.filter(d => (d.status || '').startsWith('concluida')).length;
+      const noPrazo = cData.filter(d => d.status === 'concluida_no_prazo').length;
+      const sla = concluidas > 0 ? Math.round((noPrazo / concluidas) * 100) : 100;
+      return {
+        name: c,
+        total,
+        concluidas,
+        pending: total - concluidas,
+        sla,
+        movingAverage: (total / daysCount).toFixed(1),
+        estimatedHours: ((total * 25) / (daysCount * 60)).toFixed(2)
+      };
+    }).sort((a, b) => b.concluidas - a.concluidas);
+  }, [data]);
+
+  const medalColors = ['#facc15', '#cbd5e1', '#d97706'];
+  const statBox = { background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '2px' };
+  const label = { fontSize: '0.6rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h3 className="font-outfit" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Award size={18} color="var(--accent-purple)" /> Performance da Equipe
+        </h3>
+        {onOpenTeam && (
+          <button className="tab-btn" onClick={onOpenTeam} style={{ fontSize: '0.7rem', padding: '6px 12px' }}>
+            Ver detalhes
+          </button>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem', flex: 1 }}>
+        {stats.map((s, i) => (
+          <div key={s.name} style={{ position: 'relative', border: '1px solid var(--border-light, rgba(255,255,255,0.06))', borderLeft: '4px solid var(--accent-blue)', borderRadius: '16px', padding: '1rem 0.85rem', background: 'rgba(255,255,255,0.015)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                {i < 3 && (
+                  <span style={{ flexShrink: 0, width: '16px', height: '16px', borderRadius: '50%', background: medalColors[i], color: '#111', fontSize: '0.6rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                )}
+                <span className="font-outfit" style={{ fontWeight: '700', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+              </div>
+              <Award size={16} color="var(--accent-purple)" style={{ flexShrink: 0 }} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+              <div style={statBox}><span style={label}>Concluídas</span><strong style={{ fontSize: '1.15rem' }}>{s.concluidas}</strong></div>
+              <div style={statBox}><span style={label}>Taxa SLA</span><strong style={{ fontSize: '1.15rem', color: s.sla >= 90 ? 'var(--accent-green)' : 'var(--accent-red)' }}>{s.sla}%</strong></div>
+              <div style={statBox}><span style={label}>Pendentes</span><strong style={{ fontSize: '1.15rem', color: 'var(--accent-orange)' }}>{s.pending}</strong></div>
+              <div style={statBox}><span style={label}>Total PRs</span><strong style={{ fontSize: '1.15rem' }}>{s.total}</strong></div>
+              <div style={{ ...statBox, borderLeft: '2px solid var(--accent-blue)' }}><span style={label}>Média Diária</span><strong style={{ fontSize: '1.05rem', color: 'var(--accent-blue)' }}>{s.movingAverage} <small style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500 }}>/dia</small></strong></div>
+              <div style={{ ...statBox, borderLeft: '2px solid var(--accent-purple)' }}><span style={label}>Tempo Est./Dia</span><strong style={{ fontSize: '1.05rem', color: 'var(--accent-purple)' }}>{s.estimatedHours} <small style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500 }}>h/dia</small></strong></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ColaboradoresDashboard({ data }) {
   const [selectedColab, setSelectedColab] = useState('Todos');
   const [timeRange, setTimeRange] = useState('Mensal');

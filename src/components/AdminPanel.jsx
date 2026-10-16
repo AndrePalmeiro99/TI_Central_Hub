@@ -550,7 +550,7 @@ export default function AdminPanel({ session }) {
                     >
                       <option value="collaborator">Colaborador</option>
                       <option value="guest">Guest (Convidado)</option>
-                      {isLocalManager && <option value="administrator">Administrador</option>}
+                      {(isLocalManager || isLocalAdmin) && <option value="administrator">Administrador</option>}
                       {isLocalManager && <option value="manager">Gerente (Manager)</option>}
                     </select>
                   </div>
@@ -655,11 +655,6 @@ export default function AdminPanel({ session }) {
                                   return <span style={{ fontSize: '0.75rem', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Sem Permissão</span>;
                                 }
 
-                                // ADM comum não pode mexer em outros ADMs
-                                if (isTargetAdmin && !isLocalManager) {
-                                  return <span style={{ fontSize: '0.75rem', color: 'var(--text-disabled)', fontStyle: 'italic' }}>Sem Permissão</span>;
-                                }
-
                                 // Solicitação pendente: Aceitar / Recusar
                                 if (!user.is_approved) {
                                   const btnBase = { fontSize: '0.72rem', padding: '6px 14px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: '600' };
@@ -712,7 +707,7 @@ export default function AdminPanel({ session }) {
                                     </button>
 
                                     {/* Botão Remover (Exclui permanentemente da listagem e banco) */}
-                                    {(isLocalManager || (isLocalAdmin && !isTargetAdmin)) && (
+                                    {(isLocalManager || isLocalAdmin) && (
                                       <button 
                                         className="tab-btn" 
                                         style={{ 

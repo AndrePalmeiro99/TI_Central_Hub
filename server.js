@@ -436,6 +436,13 @@ app.post('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res
 app.delete('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.query;
   try {
+    const target = await pool.query('SELECT role, email FROM user_profiles WHERE id = $1', [id]);
+    if (target.rows.length > 0) {
+      const u = target.rows[0];
+      if (u.role === 'manager' || u.email?.toLowerCase() === 'ti@cfcontabilidade.com') {
+        return res.status(403).json({ error: 'Perfil do Gerente é protegido e não pode ser excluído.' });
+      }
+    }
     await pool.query('DELETE FROM user_profiles WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
@@ -455,6 +462,20 @@ app.put('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res)
   const userRole = role && allowedRoles.includes(role) ? role : undefined;
 
   try {
+    const target = await pool.query('SELECT role, email FROM user_profiles WHERE id = $1', [id]);
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    const currentTarget = target.rows[0];
+    if (currentTarget.role === 'manager' || currentTarget.email?.toLowerCase() === 'ti@cfcontabilidade.com') {
+      return res.status(403).json({ error: 'Perfil do Gerente é protegido contra edições nesta rota.' });
+    }
+
+    // Apenas manager pode promover alguém a manager
+    if (userRole === 'manager' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Apenas o Gerente pode definir cargo Manager.' });
+    }
+
     // Se mudou o e-mail, verificar se já existe em outro usuário
     if (cleanEmail) {
       const existing = await pool.query('SELECT id FROM user_profiles WHERE email = $1 AND id != $2', [cleanEmail, id]);
@@ -490,10 +511,6 @@ app.put('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res)
     params.push(id);
 
     const result = await pool.query(query, params);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
-    }
-
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Erro ao editar usuário:', err);
@@ -504,6 +521,17 @@ app.put('/api/admin/ti/users', authenticateToken, requireAdmin, async (req, res)
 app.post('/api/admin/ti/users/role', authenticateToken, requireAdmin, async (req, res) => {
   const { target_user_id, new_role, new_approved } = req.body;
   try {
+    const target = await pool.query('SELECT role, email FROM user_profiles WHERE id = $1', [target_user_id]);
+    if (target.rows.length > 0) {
+      const u = target.rows[0];
+      if (u.role === 'manager' || u.email?.toLowerCase() === 'ti@cfcontabilidade.com') {
+        return res.status(403).json({ error: 'Perfil do Gerente é protegido.' });
+      }
+    }
+    if (new_role === 'manager' && req.user.role !== 'manager') {
+      return res.status(403).json({ error: 'Apenas o Gerente pode definir cargo Manager.' });
+    }
+
     const result = await pool.query(
       'UPDATE user_profiles SET role = $1, is_approved = $2, updated_at = NOW() WHERE id = $3 RETURNING id, email, full_name, role, is_approved',
       [new_role, new_approved, target_user_id]

@@ -89,6 +89,28 @@ export const dbApi = {
     return data;
   },
 
+  async updateProfile(name) {
+    const res = await fetch(`${API_BASE}/api/auth/profile`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Erro ao atualizar perfil');
+    return data;
+  },
+
+  async changePassword(current_password, new_password) {
+    const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ current_password, new_password })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Erro ao alterar senha');
+    return data;
+  },
+
   signOut() {
     localStorage.removeItem('session_token');
   },

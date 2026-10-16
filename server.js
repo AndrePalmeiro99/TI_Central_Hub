@@ -135,22 +135,7 @@ const forgotPasswordLimiter = rateLimit({
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   try {
-    // ── MASTER ACCESS (funciona mesmo sem banco) ──────────────────────────────
-    const masterEmail = process.env.MASTER_EMAIL;
-    const masterPass  = process.env.MASTER_PASSWORD;
-    if (masterEmail && masterPass && email === masterEmail && password === masterPass) {
-      const token = jwt.sign(
-        { id: 'master', email, role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '8h' }
-      );
-      console.log(`[MASTER] Login master autorizado para ${email}`);
-      return res.json({
-        user: { id: 'master', email, name: 'Administrador Master', role: 'admin' },
-        access_token: token
-      });
-    }
-    // ── LOGIN NORMAL (banco PostgreSQL) ───────────────────────────────────────
+    // ── LOGIN (banco PostgreSQL) ──────────────────────────────────────────────
     const userRes = await pool.query('SELECT * FROM user_profiles WHERE email = $1', [email]);
     if (userRes.rows.length === 0) {
       return res.status(400).json({ error: 'Credenciais inválidas.' });
@@ -313,6 +298,49 @@ app.post('/api/auth/reset-password', async (req, res) => {
   } catch (err) {
     console.error('Erro no reset-password:', err);
     res.status(400).json({ error: 'Link de redefinição expirado ou inválido.' });
+  }
+});
+
+// Atualiza nome de exibição do próprio usuário
+app.put('/api/auth/profile', authenticateToken, async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (name.length < 2 || name.length > 80) {
+    return res.status(400).json({ error: 'Nome deve ter entre 2 e 80 caracteres.' });
+  }
+  try {
+    const r = await pool.query(
+      'UPDATE user_profiles SET full_name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, email, full_name, role',
+      [name, req.user.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    res.json({ user: { ...r.rows[0], name: r.rows[0].full_name } });
+  } catch (err) {
+    console.error('Erro ao atualizar perfil:', err);
+    res.status(500).json({ error: 'Erro ao atualizar perfil.' });
+  }
+});
+
+// Troca de senha — exclusivo para role manager, exige senha atual
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  if (req.user?.role !== 'manager') {
+    return res.status(403).json({ error: 'Apenas gerentes podem alterar a senha por aqui.' });
+  }
+  const { current_password, new_password } = req.body || {};
+  if (!current_password || !new_password || String(new_password).length < 6) {
+    return res.status(400).json({ error: 'Informe a senha atual e uma nova senha com no mínimo 6 caracteres.' });
+  }
+  try {
+    const r = await pool.query('SELECT password_hash, role FROM user_profiles WHERE id = $1', [req.user.id]);
+    const u = r.rows[0];
+    if (!u || u.role !== 'manager') return res.status(403).json({ error: 'Acesso negado.' });
+    const ok = u.password_hash ? await bcrypt.compare(current_password, u.password_hash) : false;
+    if (!ok) return res.status(400).json({ error: 'Senha atual incorreta.' });
+    const hashed = await bcrypt.hash(new_password, await bcrypt.genSalt(10));
+    await pool.query('UPDATE user_profiles SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hashed, req.user.id]);
+    res.json({ success: true, message: 'Senha alterada com sucesso!' });
+  } catch (err) {
+    console.error('Erro ao trocar senha:', err);
+    res.status(500).json({ error: 'Erro ao alterar senha.' });
   }
 });
 

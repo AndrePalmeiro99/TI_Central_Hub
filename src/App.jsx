@@ -11,6 +11,7 @@ import { fetchTaskDetails } from './services/onetyApi';
 import AdminPanel from './components/AdminPanel';
 import MonthlyHistoryModal from './components/MonthlyHistoryModal';
 import OperacionalMetricModal from './components/OperacionalMetricModal';
+import ProfileEditSection from './components/ProfileEditSection';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -2689,6 +2690,9 @@ function App() {
                 </div>
               </div>
             </div>
+
+            {/* Edit Profile (nome p/ todos, senha só Gerente) */}
+            <ProfileEditSection session={session} onSessionUpdate={setSession} />
 
             {/* Actions Block */}
             <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem', marginTop: '4px' }}>

@@ -35,12 +35,14 @@ export default function Login({ onLoginSuccess, onShowRegister }) {
     try {
       const data = await dbApi.login(email, password);
       RateLimiter.reset(email);
+      const effectiveRole = (!data.user?.role || data.user?.role === 'user') ? 'collaborator' : data.user?.role;
       const mappedUser = {
         ...data.user,
+        role: effectiveRole,
         full_name: data.user?.name || data.user?.full_name,
         user_metadata: { 
           full_name: data.user?.name || data.user?.full_name,
-          role: data.user?.role || 'user', 
+          role: effectiveRole, 
           is_approved: true 
         }
       };

@@ -14,10 +14,9 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   email         TEXT NOT NULL UNIQUE,
   full_name     TEXT,
   password_hash TEXT,
-  role          TEXT NOT NULL DEFAULT 'user',
-  -- roles válidos: 'admin' | 'administrator' | 'manager'
-  --                'collaborator' | 'guest' | 'ghost' | 'user'
-  is_approved   BOOLEAN NOT NULL DEFAULT FALSE,
+  role          TEXT NOT NULL DEFAULT 'collaborator',
+  -- roles válidos: 'administrator' | 'manager' | 'collaborator' | 'guest' | 'ghost'
+  is_approved   BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -25,12 +24,14 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 DO $$
 BEGIN
   ALTER TABLE user_profiles ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  ALTER TABLE user_profiles ALTER COLUMN role SET DEFAULT 'collaborator';
+  ALTER TABLE user_profiles ALTER COLUMN is_approved SET DEFAULT TRUE;
 EXCEPTION WHEN OTHERS THEN
   NULL;
 END$$;
 
 -- Colunas adicionadas em versões posteriores (idempotente)
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS created_at  TIMESTAMPTZ DEFAULT NOW();
 
@@ -38,14 +39,15 @@ ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS created_at  TIMESTAMPTZ DEFAU
 -- 2. NORMALIZAR ROLES EXISTENTES NO BANCO
 -- Garante que roles antigos inconsistentes virem o padrão certo.
 -- -------------------------------------------------------------
--- 'admin' vira 'administrator' (master usa token em memória, não linha no banco)
+-- 'admin' vira 'administrator'
 UPDATE user_profiles SET role = 'administrator' WHERE role = 'admin';
+-- 'user' vira 'collaborator'
+UPDATE user_profiles SET role = 'collaborator' WHERE role = 'user' OR role IS NULL;
 
--- Aprovação automática para roles que já têm acesso
+-- Aprovação automática para todos os colaboradores, admins e managers
 UPDATE user_profiles
 SET is_approved = TRUE
-WHERE role IN ('administrator', 'manager', 'collaborator')
-  AND is_approved = FALSE;
+WHERE is_approved = FALSE;
 
 -- -------------------------------------------------------------
 -- 3. TABELA franchise_royalties_config

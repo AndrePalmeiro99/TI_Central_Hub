@@ -158,8 +158,10 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Credenciais inválidas.' });
     }
 
+    const effectiveRole = (!user.role || user.role === 'user') ? 'collaborator' : user.role;
+
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role || 'user' },
+      { id: user.id, email: user.email, role: effectiveRole },
       JWT_SECRET,
       { expiresIn: '8h' }
     );
@@ -169,7 +171,8 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.full_name || user.email,
-        role: user.role
+        role: effectiveRole,
+        is_approved: true
       },
       access_token: token
     });
@@ -189,15 +192,19 @@ app.post('/api/auth/register', loginLimiter, async (req, res) => {
 
     if (existing.rows.length > 0) {
       user = existing.rows[0];
-      if (name && !user.full_name) {
-        await pool.query('UPDATE user_profiles SET full_name = $1 WHERE id = $2', [name.trim(), user.id]);
-        user.full_name = name.trim();
-      }
+      // Garante que usuário não fique preso com role 'user' legada ou pendente
+      const updatedRole = (!user.role || user.role === 'user') ? 'collaborator' : user.role;
+      await pool.query(
+        'UPDATE user_profiles SET role = $1, is_approved = TRUE, full_name = COALESCE($2, full_name) WHERE id = $3',
+        [updatedRole, name ? name.trim() : null, user.id]
+      );
+      user.role = updatedRole;
+      if (name) user.full_name = name.trim();
     } else {
       const userId = randomUUID();
       const insertRes = await pool.query(
-        `INSERT INTO user_profiles (id, email, full_name, role)
-         VALUES ($1, $2, $3, 'user') RETURNING id, email, full_name, role`,
+        `INSERT INTO user_profiles (id, email, full_name, role, is_approved)
+         VALUES ($1, $2, $3, 'collaborator', TRUE) RETURNING id, email, full_name, role, is_approved`,
         [userId, email.trim().toLowerCase(), name ? name.trim() : email.split('@')[0]]
       );
       user = insertRes.rows[0];
@@ -345,7 +352,12 @@ app.post('/api/auth/reset-password', async (req, res) => {
     const hashedPassword = await bcrypt.hash(new_password, salt);
 
     await pool.query(
-      'UPDATE user_profiles SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      `UPDATE user_profiles 
+       SET password_hash = $1, 
+           is_approved = TRUE,
+           role = CASE WHEN role = 'user' OR role IS NULL THEN 'collaborator' ELSE role END,
+           updated_at = NOW() 
+       WHERE id = $2`,
       [hashedPassword, decoded.id]
     );
 

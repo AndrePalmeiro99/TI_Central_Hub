@@ -181,48 +181,95 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 
 app.post('/api/auth/register', loginLimiter, async (req, res) => {
   const { email, password, name } = req.body;
+  if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
+
   try {
-    const existing = await pool.query('SELECT id FROM user_profiles WHERE email = $1', [email]);
+    const existing = await pool.query('SELECT id, full_name, email FROM user_profiles WHERE email = $1', [email]);
+    let user;
+
     if (existing.rows.length > 0) {
-      // Usuário já existe — apenas define/atualiza a senha
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-      const updRes = await pool.query(
-        'UPDATE user_profiles SET password_hash = $1 WHERE email = $2 RETURNING id, email, full_name, role',
-        [hashedPassword, email]
+      user = existing.rows[0];
+      if (name && !user.full_name) {
+        await pool.query('UPDATE user_profiles SET full_name = $1 WHERE id = $2', [name.trim(), user.id]);
+        user.full_name = name.trim();
+      }
+    } else {
+      const userId = randomUUID();
+      const insertRes = await pool.query(
+        `INSERT INTO user_profiles (id, email, full_name, role)
+         VALUES ($1, $2, $3, 'user') RETURNING id, email, full_name, role`,
+        [userId, email.trim().toLowerCase(), name ? name.trim() : email.split('@')[0]]
       );
-      const user = updRes.rows[0];
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role || 'user' },
-        JWT_SECRET,
-        { expiresIn: '8h' }
-      );
-      return res.json({ user: { ...user, name: user.full_name }, access_token: token });
+      user = insertRes.rows[0];
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    const userId = randomUUID();
+    // Se uma senha foi enviada diretamente (caso legado), salva
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      await pool.query('UPDATE user_profiles SET password_hash = $1 WHERE id = $2', [hashedPassword, user.id]);
+    }
 
-    const insertRes = await pool.query(
-      `INSERT INTO user_profiles (id, email, password_hash, full_name, role)
-       VALUES ($1, $2, $3, $4, 'user') RETURNING id, email, full_name, role`,
-      [userId, email, hashedPassword, name || email.split('@')[0]]
-    );
-
-    const user = insertRes.rows[0];
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+    // Gera token de definição/criação de senha (válido por 2 horas)
+    const resetToken = jwt.sign(
+      { id: user.id, email: user.email, type: 'reset' },
       JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: '2h' }
     );
 
-    res.status(201).json({ user: { ...user, name: user.full_name }, access_token: token });
+    const host = req.get('origin') || req.get('referer') || `http://localhost:${PORT}`;
+    const cleanHost = host.replace(/\/$/, '');
+    const setupLink = `${cleanHost}/?reset_token=${resetToken}`;
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || '"TI Central Hub" <no-reply@cfcontabilidade.com>',
+      to: user.email,
+      subject: 'Ativação de Acesso - Definir Senha | TI Central Hub',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <div style="background: #10b981; width: 48px; height: 48px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: #fff;">V</div>
+            <h2 style="color: #fff; margin: 12px 0 4px;">Bem-vindo ao TI Central Hub!</h2>
+            <p style="color: #94a3b8; font-size: 13px; margin: 0;">Plataforma de Gestão Operacional & BI Executivo</p>
+          </div>
+
+          <p style="font-size: 15px;">Olá, <strong>${user.full_name || 'Colaborador'}</strong>!</p>
+          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+            Recebemos a sua solicitação de acesso. Para começar a utilizar a plataforma, clique no botão abaixo para <strong>definir a sua senha de acesso</strong>:
+          </p>
+
+          <div style="margin: 32px 0; text-align: center;">
+            <a href="${setupLink}" style="background: #10b981; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);">
+              Criar Minha Senha de Acesso
+            </a>
+          </div>
+
+          <p style="font-size: 12px; color: #94a3b8; text-align: center;">Este link expira em <strong>2 horas</strong>.</p>
+          <hr style="border: 0; border-top: 1px solid #334155; margin: 24px 0;" />
+          <p style="font-size: 11px; color: #64748b; word-break: break-all;">Se o botão não funcionar, copie e cole este link no seu navegador:<br/>
+            <a href="${setupLink}" style="color: #38bdf8;">${setupLink}</a>
+          </p>
+        </div>
+      `
+    };
+
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      await smtpTransporter.sendMail(mailOptions);
+      console.log(`[SMTP] E-mail de definição de senha enviado para ${user.email}`);
+    } else {
+      console.log(`[DEV / SEM SMTP] Token de definição gerado para ${user.email}: ${setupLink}`);
+    }
+
+    res.status(201).json({
+      message: 'Solicitação recebida com sucesso! Enviamos um e-mail com as instruções para definir sua senha.',
+      user: { id: user.id, email: user.email, name: user.full_name }
+    });
   } catch (err) {
     console.error('Erro no cadastro:', err);
-    res.status(500).json({ error: 'Erro ao registrar usuário.' });
+    res.status(500).json({ error: 'Erro ao registrar solicitação. Tente novamente mais tarde.' });
   }
 });
+
 
 // Envio de e-mail de recuperação de senha via SMTP Direto
 app.post('/api/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {

@@ -39,6 +39,14 @@ const smtpTransporter = nodemailer.createTransport({
   socketTimeout: 10000
 });
 
+// Diagnóstico SMTP na inicialização (sem expor senha)
+console.log(`[SMTP] host=${process.env.SMTP_HOST || 'smtp.gmail.com (padrão)'} port=${process.env.SMTP_PORT || '587 (padrão)'} secure=${process.env.SMTP_SECURE} user=${process.env.SMTP_USER || '(vazio)'} pass=${process.env.SMTP_PASS ? 'definida' : '(vazia)'}`);
+if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+  smtpTransporter.verify()
+    .then(() => console.log('[SMTP] Conexão e autenticação OK'))
+    .catch(err => console.error(`[SMTP] Falha no verify: ${err.code || ''} ${err.message}`));
+}
+
 const allowedOrigins = [
   'https://monitor-ti-central-hub.k6fcpj.easypanel.host',
   'https://centralhub.onith.com.br',

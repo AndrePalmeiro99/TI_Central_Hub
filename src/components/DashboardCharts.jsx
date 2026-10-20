@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, AreaChart, Area, Legend } from 'recharts';
-import { Clock, ShieldAlert, User, Star, TrendingUp, Award, List } from 'lucide-react';
+import { Clock, ShieldAlert, User, Star, TrendingUp, Award, List, Edit3, X, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const sourceColors = {
@@ -319,8 +319,10 @@ export function SourceBreakdown({ data, franchiseBasesMap = {}, allTasks = [] })
   );
 }
 
-export function MonthlyTrendChart({ data }) {
-  const [timeRange, setTimeRange] = useState('Semestral');
+export function MonthlyTrendChart({ data, timeRange: extRange, onTimeRangeChange }) {
+  const [localRange, setLocalRange] = useState('Semestral');
+  const timeRange = extRange || localRange;
+  const setTimeRange = (r) => { setLocalRange(r); onTimeRangeChange && onTimeRangeChange(r); };
 
   const parseDate = (dateStr) => {
     if (!dateStr) return new Date();
@@ -475,8 +477,29 @@ export function MonthlyTrendChart({ data }) {
 }
 
 // Resumo compacto de performance da equipe (mês atual) para a página inicial
-export function TeamPerformanceSummary({ data, onOpenTeam }) {
-  const stats = useMemo(() => {
+const TEAM_SEL_KEY = 'team_performance_selection';
+const MAX_TEAM_SEL = 4;
+
+export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, session, timeRange = 'Mensal' }) {
+  const [selected, setSelected] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(TEAM_SEL_KEY)) || null; } catch { return null; }
+  });
+  const [editOpen, setEditOpen] = useState(false);
+  const [draft, setDraft] = useState([]);
+  const [platformUsers, setPlatformUsers] = useState([]);
+
+  // Carrega acessos da plataforma (somente gerente)
+  useEffect(() => {
+    if (!canEdit || !editOpen || platformUsers.length) return;
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const token = session?.access_token || hashParams.get('session_token') || localStorage.getItem('session_token');
+    fetch('/api/admin/ti/users', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : []))
+      .then(list => setPlatformUsers(Array.isArray(list) ? list : []))
+      .catch(() => setPlatformUsers([]));
+  }, [canEdit, editOpen, session, platformUsers.length]);
+
+  const allStats = useMemo(() => {
     if (!data) return [];
     const now = new Date();
     const parse = (s) => {
@@ -485,9 +508,19 @@ export function TeamPerformanceSummary({ data, onOpenTeam }) {
     };
     const monthData = data.filter(d => {
       const dt = parse(d.created_at);
-      return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
+      if (timeRange === 'Mensal') return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
+      if (timeRange === 'Trimestral') { const s = new Date(); s.setMonth(now.getMonth() - 3); return dt >= s; }
+      if (timeRange === 'Semestral') { const s = new Date(); s.setMonth(now.getMonth() - 6); return dt >= s; }
+      if (timeRange === 'Anual') return dt.getFullYear() === now.getFullYear();
+      return true;
     });
-    const daysCount = Math.max(1, now.getDate());
+    let daysCount = Math.max(1, now.getDate());
+    if (timeRange === 'Trimestral' || timeRange === 'Semestral') {
+      const s = new Date(); s.setMonth(now.getMonth() - (timeRange === 'Trimestral' ? 3 : 6));
+      daysCount = Math.max(1, Math.round((now - s) / 86400000));
+    } else if (timeRange === 'Anual') {
+      daysCount = Math.max(1, Math.round((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + 1);
+    }
     const defaultColabs = ['Pedro (CF-TI)', 'André (CF-TI)', 'Gabriel (CF-TI)'];
     const active = monthData.filter(d => d.colaborador && d.colaborador !== 'Pendente' && d.colaborador.trim() !== '').map(d => d.colaborador);
     const colabs = [...new Set([...active, ...defaultColabs])];
@@ -507,7 +540,43 @@ export function TeamPerformanceSummary({ data, onOpenTeam }) {
         estimatedHours: ((total * 25) / (daysCount * 60)).toFixed(2)
       };
     }).sort((a, b) => b.concluidas - a.concluidas);
-  }, [data]);
+  }, [data, timeRange]);
+
+  // Opções do checklist: colaboradores com dados + acessos cadastrados
+  const options = useMemo(() => {
+    const names = [];
+    platformUsers.forEach(u => {
+      const n = (u.full_name || u.email || '').trim();
+      if (n && !names.some(x => x.toLowerCase() === n.toLowerCase())) names.push(n);
+    });
+    return names;
+  }, [allStats, platformUsers]);
+
+  const stats = useMemo(() => {
+    if (!selected || !selected.length) return allStats.slice(0, 3);
+    return selected.map(name => allStats.find(s => s.name === name) || {
+      name, total: 0, concluidas: 0, pending: 0, sla: 100, movingAverage: '0.0', estimatedHours: '0.00'
+    }).sort((a, b) => b.concluidas - a.concluidas);
+  }, [selected, allStats]);
+
+  const openEditor = () => { setDraft(selected || []); setEditOpen(true); };
+  // Remove do rascunho nomes que não são acessos cadastrados
+  useEffect(() => {
+    if (!options.length) return;
+    setDraft(prev => prev.filter(n => options.includes(n)));
+  }, [options]);
+  const toggleDraft = (name) => setDraft(prev => prev.includes(name)
+    ? prev.filter(n => n !== name)
+    : (prev.length >= MAX_TEAM_SEL ? prev : [...prev, name]));
+  const saveDraft = () => {
+    if (draft.length < 1 || draft.length > MAX_TEAM_SEL) return;
+    setSelected(draft);
+    localStorage.setItem(TEAM_SEL_KEY, JSON.stringify(draft));
+    setEditOpen(false);
+  };
+
+  const n = stats.length;
+  const gridCols = n <= 1 ? '1fr' : n === 2 ? 'repeat(2, 1fr)' : n === 3 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)';
 
   const medalColors = ['#facc15', '#cbd5e1', '#d97706'];
   const statBox = { background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '2px' };
@@ -519,13 +588,58 @@ export function TeamPerformanceSummary({ data, onOpenTeam }) {
         <h3 className="font-outfit" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Award size={18} color="var(--accent-purple)" /> Performance da Equipe
         </h3>
-        {onOpenTeam && (
-          <button className="tab-btn" onClick={onOpenTeam} style={{ fontSize: '0.7rem', padding: '6px 12px' }}>
-            Ver detalhes
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {canEdit && (
+            <button id="team-perf-edit-btn" className="tab-btn" onClick={openEditor} title="Editar membros exibidos" style={{ fontSize: '0.72rem', fontWeight: 700, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px', border: '1px solid var(--accent-blue)', background: 'rgba(59,130,246,0.12)', color: 'var(--accent-blue)', borderRadius: '8px', boxShadow: '0 0 10px rgba(59,130,246,0.25)', cursor: 'pointer' }}>
+              <Edit3 size={13} /> Editar
+            </button>
+          )}
+          {onOpenTeam && (
+            <button className="tab-btn" onClick={onOpenTeam} style={{ fontSize: '0.7rem', padding: '6px 12px' }}>
+              Ver detalhes
+            </button>
+          )}
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem', flex: 1 }}>
+
+      {editOpen && (
+        <div onClick={() => setEditOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} onClick={e => e.stopPropagation()}
+            style={{ width: 'min(420px, 92vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: '#14161b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.25rem', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h4 className="font-outfit" style={{ fontSize: '1rem', fontWeight: 700 }}>Membros em destaque</h4>
+              <button onClick={() => setEditOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Selecione de 1 a {MAX_TEAM_SEL} acessos. <strong style={{ color: draft.length >= MAX_TEAM_SEL ? 'var(--accent-orange)' : 'var(--accent-blue)' }}>{draft.length}/{MAX_TEAM_SEL}</strong>
+            </p>
+            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
+              {options.map(name => {
+                const checked = draft.includes(name);
+                const disabled = !checked && draft.length >= MAX_TEAM_SEL;
+                return (
+                  <label key={name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '10px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, background: checked ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${checked ? 'var(--accent-blue)' : 'rgba(255,255,255,0.05)'}`, transition: 'all 0.15s' }}>
+                    <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleDraft(name)} style={{ display: 'none' }} />
+                    <span style={{ width: '18px', height: '18px', borderRadius: '5px', border: `2px solid ${checked ? 'var(--accent-blue)' : 'rgba(255,255,255,0.25)'}`, background: checked ? 'var(--accent-blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {checked && <Check size={12} color="#fff" strokeWidth={3} />}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '1rem' }}>
+              <button className="tab-btn" onClick={() => setEditOpen(false)} style={{ fontSize: '0.75rem', padding: '7px 14px' }}>Cancelar</button>
+              <button id="team-perf-save-btn" onClick={saveDraft} disabled={draft.length < 1}
+                style={{ fontSize: '0.75rem', padding: '7px 14px', borderRadius: '8px', border: 'none', fontWeight: 700, color: '#fff', background: draft.length < 1 ? 'rgba(255,255,255,0.1)' : 'var(--accent-blue)', cursor: draft.length < 1 ? 'not-allowed' : 'pointer' }}>
+                Salvar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: '0.75rem', flex: 1 }}>
         {stats.map((s, i) => (
           <div key={s.name} style={{ position: 'relative', border: '1px solid var(--border-light, rgba(255,255,255,0.06))', borderLeft: '4px solid var(--accent-blue)', borderRadius: '16px', padding: '1rem 0.85rem', background: 'rgba(255,255,255,0.015)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>

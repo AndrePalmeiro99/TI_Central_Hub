@@ -18,6 +18,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
   const [activeTab, setActiveTab] = useState('geral');
+  const [trendRange, setTrendRange] = useState('Semestral');
   const [hideNav, setHideNav] = useState(false);
   const [queueFilter, setQueueFilter] = useState('pendentes');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1996,12 +1997,15 @@ function App() {
                 {/* 2. Operational Charts */}
                 <div className="content-grid">
                   <div className="glass-panel breakdown-card">
-                    <MonthlyTrendChart data={dashboardData} />
+                    <MonthlyTrendChart data={dashboardData} timeRange={trendRange} onTimeRangeChange={setTrendRange} />
                   </div>
                   <div className="glass-panel breakdown-card">
                     <TeamPerformanceSummary
                       data={dashboardData}
+                      timeRange={trendRange}
                       onOpenTeam={(isManager || isAdmin) ? () => setActiveTab('colaboradores') : undefined}
+                      canEdit={isManager}
+                      session={session}
                     />
                   </div>
                 </div>

@@ -477,69 +477,112 @@ export function MonthlyTrendChart({ data, timeRange: extRange, onTimeRangeChange
 }
 
 // Resumo compacto de performance da equipe para a página inicial.
-// Fonte: aba Histórico (audit_log) — cada alteração de código = 1 ponto ao e-mail que alterou,
-// exibido com o nome do cadastro do usuário.
-const TEAM_SEL_KEY = 'team_performance_selection_v2';
+// Resumo compacto de performance da equipe para a página inicial
+const TEAM_SEL_KEY = 'team_performance_selection';
 const MAX_TEAM_SEL = 4;
 
-export function TeamPerformanceSummary({ onOpenTeam, canEdit = false, session, timeRange = 'Mensal', refreshKey }) {
+export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, session, timeRange = 'Mensal' }) {
   const [selected, setSelected] = useState(() => {
     try { return JSON.parse(localStorage.getItem(TEAM_SEL_KEY)) || null; } catch { return null; }
   });
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState([]);
-  const [rows, setRows] = useState([]);
+  const [platformUsers, setPlatformUsers] = useState([]);
 
-  const { since, daysCount } = useMemo(() => {
-    const now = new Date();
-    let s;
-    if (timeRange === 'Mensal') s = new Date(now.getFullYear(), now.getMonth(), 1);
-    else if (timeRange === 'Trimestral') { s = new Date(now); s.setMonth(now.getMonth() - 3); }
-    else if (timeRange === 'Semestral') { s = new Date(now); s.setMonth(now.getMonth() - 6); }
-    else if (timeRange === 'Anual') s = new Date(now.getFullYear(), 0, 1);
-    else s = new Date(0);
-    return { since: s, daysCount: Math.max(1, Math.ceil((now - s) / 86400000)) };
-  }, [timeRange]);
-
-  // Busca pontuação agregada do Histórico
+  // Carrega acessos da plataforma (somente gerente)
   useEffect(() => {
+    if (!canEdit || !editOpen || platformUsers.length) return;
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const token = session?.access_token || hashParams.get('session_token') || localStorage.getItem('session_token');
-    if (!token) return;
-    fetch(`/api/team-performance?since=${encodeURIComponent(since.toISOString())}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/admin/ti/users', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => (r.ok ? r.json() : []))
-      .then(list => setRows(Array.isArray(list) ? list : []))
-      .catch(() => setRows([]));
-  }, [session, since, refreshKey]);
+      .then(list => setPlatformUsers(Array.isArray(list) ? list : []))
+      .catch(() => setPlatformUsers([]));
+  }, [canEdit, editOpen, session, platformUsers.length]);
 
-  const allStats = useMemo(() => rows.map(r => {
-    const points = Number(r.points) || 0;
-    return {
-      key: (r.email || r.name || '').toLowerCase(),
-      name: r.name || r.email,
-      email: r.email,
-      points,
-      empresas: Number(r.empresas) || 0,
-      movingAverage: (points / daysCount).toFixed(1),
-      estimatedHours: ((points * 25) / (daysCount * 60)).toFixed(2)
+  const allStats = useMemo(() => {
+    if (!data) return [];
+    const now = new Date();
+    const parse = (s) => {
+      if (!s) return new Date(0);
+      return new Date(s.includes(' ') ? s.replace(' ', 'T') : s);
     };
-  }).sort((a, b) => b.points - a.points), [rows, daysCount]);
+    const monthData = data.filter(d => {
+      const dt = parse(d.created_at);
+      if (timeRange === 'Mensal') return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
+      if (timeRange === 'Trimestral') { const s = new Date(); s.setMonth(now.getMonth() - 3); return dt >= s; }
+      if (timeRange === 'Semestral') { const s = new Date(); s.setMonth(now.getMonth() - 6); return dt >= s; }
+      if (timeRange === 'Anual') return dt.getFullYear() === now.getFullYear();
+      return true;
+    });
+    let daysCount = Math.max(1, now.getDate());
+    if (timeRange === 'Trimestral' || timeRange === 'Semestral') {
+      const s = new Date(); s.setMonth(now.getMonth() - (timeRange === 'Trimestral' ? 3 : 6));
+      daysCount = Math.max(1, Math.round((now - s) / 86400000));
+    } else if (timeRange === 'Anual') {
+      daysCount = Math.max(1, Math.round((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + 1);
+    }
 
-  // Opções do checklist: todos os cadastros (e e-mails que aparecem no Histórico)
-  const options = useMemo(() => allStats.map(s => ({ key: s.key, name: s.name })), [allStats]);
+    // Coleta colaboradores ativos nas tarefas e usuários da plataforma
+    const active = monthData.filter(d => d.colaborador && d.colaborador !== 'Pendente' && d.colaborador.trim() !== '').map(d => d.colaborador);
+    const platformNames = platformUsers.map(u => (u.full_name || u.email || '').trim()).filter(Boolean);
+    const colabs = [...new Set([...active, ...platformNames])];
+
+    return colabs.map(c => {
+      const cData = monthData.filter(d => {
+        if (!d.colaborador) return false;
+        if (d.colaborador.toLowerCase() === c.toLowerCase()) return true;
+        // Correspondência por primeiro nome ou e-mail
+        const pUser = platformUsers.find(u => (u.full_name || u.email || '').toLowerCase() === c.toLowerCase());
+        if (pUser) {
+          const uEmail = (pUser.email || '').toLowerCase();
+          const uFull = (pUser.full_name || '').toLowerCase();
+          const colabLower = d.colaborador.toLowerCase();
+          if (uEmail && colabLower === uEmail) return true;
+          if (uFull && colabLower === uFull) return true;
+        }
+        return false;
+      });
+      const total = cData.length;
+      const concluidas = cData.filter(d => (d.status || '').startsWith('concluida')).length;
+      const noPrazo = cData.filter(d => d.status === 'concluida_no_prazo').length;
+      const sla = concluidas > 0 ? Math.round((noPrazo / concluidas) * 100) : 100;
+      return {
+        name: c,
+        total,
+        concluidas,
+        pending: total - concluidas,
+        sla,
+        movingAverage: (total / daysCount).toFixed(1),
+        estimatedHours: ((total * 25) / (daysCount * 60)).toFixed(2)
+      };
+    }).sort((a, b) => b.concluidas - a.concluidas);
+  }, [data, timeRange, platformUsers]);
+
+  // Opções do checklist: todos os colaboradores ou usuários da plataforma
+  const options = useMemo(() => {
+    const names = [];
+    platformUsers.forEach(u => {
+      const n = (u.full_name || u.email || '').trim();
+      if (n && !names.some(x => x.toLowerCase() === n.toLowerCase())) names.push(n);
+    });
+    allStats.forEach(s => {
+      if (s.name && !names.some(x => x.toLowerCase() === s.name.toLowerCase())) names.push(s.name);
+    });
+    return names;
+  }, [allStats, platformUsers]);
 
   const stats = useMemo(() => {
-    if (!selected || !selected.length) return allStats.filter(s => s.points > 0).slice(0, 3);
-    return selected.map(key => allStats.find(s => s.key === key) || {
-      key, name: key, points: 0, empresas: 0, movingAverage: '0.0', estimatedHours: '0.00'
-    }).sort((a, b) => b.points - a.points);
+    if (!selected || !selected.length) return allStats.slice(0, 3);
+    return selected.map(name => allStats.find(s => s.name.toLowerCase() === name.toLowerCase()) || {
+      name, total: 0, concluidas: 0, pending: 0, sla: 100, movingAverage: '0.0', estimatedHours: '0.00'
+    }).sort((a, b) => b.concluidas - a.concluidas);
   }, [selected, allStats]);
 
   const openEditor = () => { setDraft(selected || []); setEditOpen(true); };
-  // Remove do rascunho chaves que não existem mais
   useEffect(() => {
     if (!options.length) return;
-    setDraft(prev => prev.filter(k => options.some(o => o.key === k)));
+    setDraft(prev => prev.filter(n => options.includes(n)));
   }, [options]);
   const toggleDraft = (name) => setDraft(prev => prev.includes(name)
     ? prev.filter(n => n !== name)
@@ -590,12 +633,12 @@ export function TeamPerformanceSummary({ onOpenTeam, canEdit = false, session, t
               Selecione de 1 a {MAX_TEAM_SEL} acessos. <strong style={{ color: draft.length >= MAX_TEAM_SEL ? 'var(--accent-orange)' : 'var(--accent-blue)' }}>{draft.length}/{MAX_TEAM_SEL}</strong>
             </p>
             <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
-              {options.map(({ key, name }) => {
-                const checked = draft.includes(key);
+              {options.map(name => {
+                const checked = draft.includes(name);
                 const disabled = !checked && draft.length >= MAX_TEAM_SEL;
                 return (
-                  <label key={key} title={key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '10px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, background: checked ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${checked ? 'var(--accent-blue)' : 'rgba(255,255,255,0.05)'}`, transition: 'all 0.15s' }}>
-                    <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleDraft(key)} style={{ display: 'none' }} />
+                  <label key={name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '10px', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, background: checked ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${checked ? 'var(--accent-blue)' : 'rgba(255,255,255,0.05)'}`, transition: 'all 0.15s' }}>
+                    <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleDraft(name)} style={{ display: 'none' }} />
                     <span style={{ width: '18px', height: '18px', borderRadius: '5px', border: `2px solid ${checked ? 'var(--accent-blue)' : 'rgba(255,255,255,0.25)'}`, background: checked ? 'var(--accent-blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       {checked && <Check size={12} color="#fff" strokeWidth={3} />}
                     </span>
@@ -617,7 +660,7 @@ export function TeamPerformanceSummary({ onOpenTeam, canEdit = false, session, t
 
       <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: '0.75rem', flex: 1 }}>
         {stats.map((s, i) => (
-          <div key={s.key} title={s.email || s.key} style={{ position: 'relative', border: '1px solid var(--border-light, rgba(255,255,255,0.06))', borderLeft: '4px solid var(--accent-blue)', borderRadius: '16px', padding: '1rem 0.85rem', background: 'rgba(255,255,255,0.015)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <div key={s.name} style={{ position: 'relative', border: '1px solid var(--border-light, rgba(255,255,255,0.06))', borderLeft: '4px solid var(--accent-blue)', borderRadius: '16px', padding: '1rem 0.85rem', background: 'rgba(255,255,255,0.015)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                 {i < 3 && (
@@ -628,8 +671,10 @@ export function TeamPerformanceSummary({ onOpenTeam, canEdit = false, session, t
               <Award size={16} color="var(--accent-purple)" style={{ flexShrink: 0 }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-              <div style={statBox}><span style={label}>Pontos</span><strong style={{ fontSize: '1.15rem', color: 'var(--accent-green)' }}>{s.points}</strong></div>
-              <div style={statBox}><span style={label}>Empresas</span><strong style={{ fontSize: '1.15rem' }}>{s.empresas}</strong></div>
+              <div style={statBox}><span style={label}>Concluídas</span><strong style={{ fontSize: '1.15rem' }}>{s.concluidas}</strong></div>
+              <div style={statBox}><span style={label}>Taxa SLA</span><strong style={{ fontSize: '1.15rem', color: s.sla >= 90 ? 'var(--accent-green)' : 'var(--accent-red)' }}>{s.sla}%</strong></div>
+              <div style={statBox}><span style={label}>Pendentes</span><strong style={{ fontSize: '1.15rem', color: 'var(--accent-orange)' }}>{s.pending}</strong></div>
+              <div style={statBox}><span style={label}>Total PRs</span><strong style={{ fontSize: '1.15rem' }}>{s.total}</strong></div>
               <div style={{ ...statBox, borderLeft: '2px solid var(--accent-blue)' }}><span style={label}>Média Diária</span><strong style={{ fontSize: '1.05rem', color: 'var(--accent-blue)' }}>{s.movingAverage} <small style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500 }}>/dia</small></strong></div>
               <div style={{ ...statBox, borderLeft: '2px solid var(--accent-purple)' }}><span style={label}>Tempo Est./Dia</span><strong style={{ fontSize: '1.05rem', color: 'var(--accent-purple)' }}>{s.estimatedHours} <small style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500 }}>h/dia</small></strong></div>
             </div>

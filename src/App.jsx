@@ -457,13 +457,15 @@ function App() {
       const cleanCod = newCodigo ? newCodigo.trim() : 'N/A';
       const hasCode = cleanCod && cleanCod !== 'N/A';
       
-      // Determina colaborador equivalente ao registrado
-      let assignedColab = selectedTask?.colaborador || 'Pedro (CF-TI)';
-      const activeEmail = (session?.user?.email || '').toLowerCase();
-      if (activeEmail.includes('pedro')) assignedColab = 'Pedro (CF-TI)';
-      else if (activeEmail.includes('andre')) assignedColab = 'André (CF-TI)';
-      else if (activeEmail.includes('gabriel')) assignedColab = 'Gabriel (CF-TI)';
-      else if (session?.user?.name && !session.user.name.includes('@')) assignedColab = session.user.name;
+      // Determina colaborador com base no cadastro do usuário conectado
+      const sessionUser = session?.user;
+      let assignedColab = sessionUser?.full_name || sessionUser?.name || selectedTask?.colaborador || 'Pedro (CF-TI)';
+      if (assignedColab.includes('@')) {
+        const emailLower = assignedColab.toLowerCase();
+        if (emailLower.includes('pedro')) assignedColab = 'Pedro (CF-TI)';
+        else if (emailLower.includes('andre')) assignedColab = 'André (CF-TI)';
+        else if (emailLower.includes('gabriel')) assignedColab = 'Gabriel (CF-TI)';
+      }
 
       setActionToast(hasCode ? `Código salvo! +1 entrega para ${assignedColab} 🚀` : 'Código da empresa atualizado!');
       setSelectedTask(prev => {
@@ -2024,7 +2026,7 @@ function App() {
                   </div>
                   <div className="glass-panel breakdown-card">
                     <TeamPerformanceSummary
-                      refreshKey={auditLogs?.[0]?.id}
+                      data={dashboardData}
                       timeRange={trendRange}
                       onOpenTeam={(isManager || isAdmin) ? () => setActiveTab('colaboradores') : undefined}
                       canEdit={isManager}

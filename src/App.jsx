@@ -454,8 +454,31 @@ function App() {
   const handleUpdateCodigo = async (taskId, newCodigo) => {
     const success = await updateEmpresaCodigo(taskId, newCodigo);
     if (success) {
-      setActionToast('Código da empresa atualizado!');
-      setSelectedTask(prev => prev ? { ...prev, empresa_codigo: newCodigo.trim() || 'N/A' } : null);
+      const cleanCod = newCodigo ? newCodigo.trim() : 'N/A';
+      const hasCode = cleanCod && cleanCod !== 'N/A';
+      
+      // Determina colaborador equivalente ao registrado
+      let assignedColab = selectedTask?.colaborador || 'Pedro (CF-TI)';
+      const activeEmail = (session?.user?.email || '').toLowerCase();
+      if (activeEmail.includes('pedro')) assignedColab = 'Pedro (CF-TI)';
+      else if (activeEmail.includes('andre')) assignedColab = 'André (CF-TI)';
+      else if (activeEmail.includes('gabriel')) assignedColab = 'Gabriel (CF-TI)';
+      else if (session?.user?.name && !session.user.name.includes('@')) assignedColab = session.user.name;
+
+      setActionToast(hasCode ? `Código salvo! +1 entrega para ${assignedColab} 🚀` : 'Código da empresa atualizado!');
+      setSelectedTask(prev => {
+        if (!prev) return null;
+        const isPending = !prev.status?.startsWith('concluida');
+        return { 
+          ...prev, 
+          empresa_codigo: cleanCod,
+          ...(hasCode && isPending ? {
+            colaborador: assignedColab,
+            status: 'concluida_no_prazo',
+            data_conclusao: prev.data_conclusao || new Date().toISOString()
+          } : {})
+        };
+      });
       setIsEditingCodigo(false);
       setTimeout(() => setActionToast(null), 3000);
     } else {
@@ -2001,7 +2024,7 @@ function App() {
                   </div>
                   <div className="glass-panel breakdown-card">
                     <TeamPerformanceSummary
-                      data={dashboardData}
+                      refreshKey={auditLogs?.[0]?.id}
                       timeRange={trendRange}
                       onOpenTeam={(isManager || isAdmin) ? () => setActiveTab('colaboradores') : undefined}
                       canEdit={isManager}

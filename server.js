@@ -87,6 +87,14 @@ pool.on('error', (err) => {
   // Não propagar — servidor continua rodando com fallback em memória
 });
 
+// Auto-migration defensiva de colunas em tarefa_metadata
+pool.query(`
+  ALTER TABLE tarefa_metadata 
+  ADD COLUMN IF NOT EXISTS colaborador_override TEXT,
+  ADD COLUMN IF NOT EXISTS status_override TEXT;
+`).catch(err => console.debug('[DB] Migração tarefa_metadata colunas extras:', err.message));
+
+
 // In-memory / File Fallback Storage when Postgres is offline
 let memoryStore = {
   tarefa_metadata: {},
@@ -435,6 +443,55 @@ app.get('/api/audit-logs', authenticateToken, async (req, res) => {
   }
 });
 
+// Performance da equipe baseada no Histórico (audit_log):
+// cada troca de código de N/A para um código válido = 1 ponto para o e-mail em changed_by
+// associado ao nome do cadastro em user_profiles.
+app.get('/api/team-performance', authenticateToken, async (req, res) => {
+  const sinceRaw = req.query.since ? new Date(req.query.since) : new Date(0);
+  const since = isNaN(sinceRaw.getTime()) ? new Date(0) : sinceRaw;
+  try {
+    const result = await pool.query(
+      `WITH pts AS (
+         SELECT LOWER(TRIM(changed_by)) AS k,
+                COUNT(*)::int AS points,
+                COUNT(DISTINCT tarefa_id)::int AS empresas,
+                MAX(created_at) AS last_at
+           FROM audit_log
+          WHERE old_value LIKE 'CÓD: N/A%'
+            AND new_value LIKE 'CÓD:%'
+            AND new_value NOT LIKE 'CÓD: N/A%'
+            AND created_at >= $1
+          GROUP BY 1
+       )
+       SELECT COALESCE(LOWER(u.email), p.k) AS email,
+              COALESCE(NULLIF(TRIM(u.full_name), ''), u.email, p.k) AS name,
+              COALESCE(p.points, 0) AS points,
+              COALESCE(p.empresas, 0) AS empresas,
+              p.last_at
+         FROM user_profiles u
+         FULL OUTER JOIN pts p ON LOWER(TRIM(u.email)) = p.k
+        ORDER BY points DESC, name ASC`,
+      [since]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Erro ao calcular performance da equipe:', err);
+    const map = {};
+    memoryStore.audit_log
+      .filter(l => String(l.old_value || '').startsWith('CÓD: N/A')
+        && String(l.new_value || '').startsWith('CÓD:')
+        && !String(l.new_value).startsWith('CÓD: N/A')
+        && new Date(l.created_at) >= since)
+      .forEach(l => {
+        const k = String(l.changed_by || '').trim().toLowerCase();
+        if (!map[k]) map[k] = { email: k, name: k, points: 0, tarefas: new Set(), last_at: l.created_at };
+        map[k].points += 1;
+        map[k].tarefas.add(l.tarefa_id);
+      });
+    res.json(Object.values(map).map(({ tarefas, ...r }) => ({ ...r, empresas: tarefas.size })));
+  }
+});
+
 // Proxies internos para APIs externas caso executado sem rotas serverless
 app.get('/api/admin/ti/logs', authenticateToken, async (req, res) => {
   const { tarefa_id, limit = 50 } = req.query;
@@ -696,7 +753,9 @@ app.post('/api/tarefa-metadata', authenticateToken, async (req, res) => {
     detalhe_base_override, 
     honorario, 
     is_backoffice, 
-    is_cancelled 
+    is_cancelled,
+    colaborador_override,
+    status_override
   } = req.body;
 
   const finalObs = observacoes !== undefined ? observacoes : observacao;
@@ -706,9 +765,9 @@ app.post('/api/tarefa-metadata', authenticateToken, async (req, res) => {
       INSERT INTO tarefa_metadata (
         id, empresa_codigo, observacoes, contrato_aceite, 
         franquia_override, sistema_override, detalhe_base_override, 
-        honorario, is_backoffice, is_cancelled, updated_at
+        honorario, is_backoffice, is_cancelled, colaborador_override, status_override, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
       ON CONFLICT (id) DO UPDATE SET
         empresa_codigo = COALESCE(EXCLUDED.empresa_codigo, tarefa_metadata.empresa_codigo),
         observacoes = COALESCE(EXCLUDED.observacoes, tarefa_metadata.observacoes),
@@ -719,13 +778,15 @@ app.post('/api/tarefa-metadata', authenticateToken, async (req, res) => {
         honorario = COALESCE(EXCLUDED.honorario, tarefa_metadata.honorario),
         is_backoffice = COALESCE(EXCLUDED.is_backoffice, tarefa_metadata.is_backoffice),
         is_cancelled = COALESCE(EXCLUDED.is_cancelled, tarefa_metadata.is_cancelled),
+        colaborador_override = COALESCE(EXCLUDED.colaborador_override, tarefa_metadata.colaborador_override),
+        status_override = COALESCE(EXCLUDED.status_override, tarefa_metadata.status_override),
         updated_at = NOW()
       RETURNING *;
     `;
     const result = await pool.query(query, [
       id, empresa_codigo, finalObs, contrato_aceite,
       franquia_override, sistema_override, detalhe_base_override,
-      honorario, is_backoffice, is_cancelled
+      honorario, is_backoffice, is_cancelled, colaborador_override, status_override
     ]);
     res.json(result.rows[0] || {});
   } catch (err) {
@@ -740,6 +801,8 @@ app.post('/api/tarefa-metadata', authenticateToken, async (req, res) => {
       honorario,
       is_backoffice,
       is_cancelled,
+      colaborador_override,
+      status_override,
       updated_at: new Date().toISOString()
     };
     memoryStore.tarefa_metadata[id] = { ...(memoryStore.tarefa_metadata[id] || {}), ...updated };

@@ -249,15 +249,32 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     const nextCodigo = newCodigo ? newCodigo.trim() : 'N/A';
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const userEmailFromHash = hashParams.get('email');
-    const userName = isManager ? 'Gerente (TI)' : (userEmailFromHash || userEmail || 'Sistema');
+    const activeEmail = (userEmailFromHash || userEmail || session?.user?.email || '').toLowerCase();
+    
+    // Histórico sempre registra o e-mail de quem alterou (base da Performance da Equipe)
+    const userName = activeEmail || session?.user?.name || 'Sistema';
 
-    const success = await saveTarefaMetadata(taskId, {
+    // Colaborador = nome do cadastro do usuário (fallback: e-mail)
+    const sessionName = session?.user?.full_name || session?.user?.name;
+    const collaboratorName = (sessionName && !sessionName.includes('@')) ? sessionName : (activeEmail || task?.colaborador || 'Sistema');
+
+    const hasValidCodigo = nextCodigo && nextCodigo !== 'N/A';
+    const shouldAwardPoint = hasValidCodigo && isPending;
+
+    const patch = {
       empresa_codigo: nextCodigo === 'N/A' ? null : nextCodigo
-    }, {
+    };
+
+    if (shouldAwardPoint) {
+      patch.colaborador_override = collaboratorName;
+      patch.status_override = 'concluida_no_prazo';
+    }
+
+    const success = await saveTarefaMetadata(taskId, patch, {
       empresa: task?.empresa_nome || 'N/A',
       changed_by: userName,
       old_value: `CÓD: ${currentCodigo}`,
-      new_value: `CÓD: ${nextCodigo}`
+      new_value: `CÓD: ${nextCodigo}${shouldAwardPoint ? ` (+1 Concluída: ${collaboratorName})` : ''}`
     });
 
     if (success) {
@@ -266,11 +283,28 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
         [taskId]: { 
           ...prev[taskId], 
           contrato_aceite: currentContrato,
-          empresa_codigo: nextCodigo === 'N/A' ? null : nextCodigo 
+          empresa_codigo: nextCodigo === 'N/A' ? null : nextCodigo,
+          ...(shouldAwardPoint ? {
+            colaborador_override: collaboratorName,
+            status_override: 'concluida_no_prazo'
+          } : {})
         }
       }));
 
-      setData(prevData => prevData.map(t => t.id === taskId ? { ...t, empresa_codigo: nextCodigo } : t));
+      setData(prevData => prevData.map(t => {
+        if (t.id === taskId) {
+          return { 
+            ...t, 
+            empresa_codigo: nextCodigo,
+            ...(shouldAwardPoint ? {
+              colaborador: collaboratorName,
+              status: 'concluida_no_prazo',
+              data_conclusao: t.data_conclusao || new Date().toISOString()
+            } : {})
+          };
+        }
+        return t;
+      }));
       fetchAuditLogs();
       return true;
     }
@@ -1057,11 +1091,11 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
             matched_prs: formattedMatchedPrs,
             created_at: t.data_criacao,
             data_prazo: t.data_prazo,
-            data_conclusao: t.data_conclusao,
-            status: status,
+            data_conclusao: metaRow.status_override ? (t.data_conclusao || new Date().toISOString()) : t.data_conclusao,
+            status: metaRow.status_override || status,
             software_origem: manualSistema || sw,
             detalhe_base: (manualDetalheBase !== undefined && manualDetalheBase !== null) ? manualDetalheBase : det,
-            colaborador: resp,
+            colaborador: metaRow.colaborador_override || resp,
             franquia: manualFranquia || matchedKey || t.franqueado || 'Matriz',
             empresa_nome: t.empresa?.nome || 'N/A',
             cnpj: taskCnpj || 'N/A',

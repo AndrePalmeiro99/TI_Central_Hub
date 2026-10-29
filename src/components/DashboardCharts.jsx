@@ -546,12 +546,16 @@ export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, sess
       const total = cData.length;
       const concluidas = cData.filter(d => (d.status || '').startsWith('concluida')).length;
       const noPrazo = cData.filter(d => d.status === 'concluida_no_prazo').length;
-      const sla = concluidas > 0 ? Math.round((noPrazo / concluidas) * 100) : 100;
+      // Pontuação SLA: no prazo = +1, atrasada = -1; taxa = média dos pontos
+      const atrasadas = concluidas - noPrazo;
+      const sla = concluidas > 0 ? Math.round(((noPrazo - atrasadas) / concluidas) * 100) : 100;
       return {
         name: c,
         total,
         concluidas,
         pending: total - concluidas,
+        noPrazo,
+        atrasadas,
         sla,
         movingAverage: (total / daysCount).toFixed(1),
         estimatedHours: ((total * 25) / (daysCount * 60)).toFixed(2)
@@ -575,9 +579,12 @@ export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, sess
   const stats = useMemo(() => {
     if (!selected || !selected.length) return allStats.slice(0, 3);
     return selected.map(name => allStats.find(s => s.name.toLowerCase() === name.toLowerCase()) || {
-      name, total: 0, concluidas: 0, pending: 0, sla: 100, movingAverage: '0.0', estimatedHours: '0.00'
+      name, total: 0, concluidas: 0, pending: 0, noPrazo: 0, atrasadas: 0, sla: 100, movingAverage: '0.0', estimatedHours: '0.00'
     }).sort((a, b) => b.concluidas - a.concluidas);
   }, [selected, allStats]);
+
+  // Total de conclusões dos membros exibidos (base da barra de participação; soma = 100%)
+  const teamConcluidas = useMemo(() => stats.reduce((acc, s) => acc + s.concluidas, 0), [stats]);
 
   const openEditor = () => { setDraft(selected || []); setEditOpen(true); };
   useEffect(() => {
@@ -595,11 +602,12 @@ export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, sess
   };
 
   const n = stats.length;
-  const gridCols = n <= 1 ? '1fr' : n === 2 ? 'repeat(2, 1fr)' : n === 3 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)';
+  const gridCols = n <= 1 ? '1fr' : n === 3 ? 'repeat(3, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))';
 
   const medalColors = ['#facc15', '#cbd5e1', '#d97706'];
-  const statBox = { background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '2px' };
-  const label = { fontSize: '0.6rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' };
+  const statBox = { background: 'linear-gradient(160deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01))', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '10px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: '6px', minWidth: 0, minHeight: 0 };
+  const label = { fontSize: '0.55rem', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' };
+  const value = { fontSize: 'clamp(1rem, 1.6vw, 1.4rem)', fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap', maxWidth: '100%' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -660,7 +668,7 @@ export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, sess
 
       <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: '0.75rem', flex: 1 }}>
         {stats.map((s, i) => (
-          <div key={s.name} style={{ position: 'relative', border: '1px solid var(--border-light, rgba(255,255,255,0.06))', borderLeft: '4px solid var(--accent-blue)', borderRadius: '16px', padding: '1rem 0.85rem', background: 'rgba(255,255,255,0.015)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <div key={s.name} style={{ position: 'relative', minWidth: 0, overflow: 'hidden', border: '1px solid var(--border-light, rgba(255,255,255,0.06))', borderLeft: '4px solid var(--accent-blue)', borderRadius: '16px', padding: '1rem 0.85rem', background: 'rgba(255,255,255,0.015)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                 {i < 3 && (
@@ -670,14 +678,62 @@ export function TeamPerformanceSummary({ data, onOpenTeam, canEdit = false, sess
               </div>
               <Award size={16} color="var(--accent-purple)" style={{ flexShrink: 0 }} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-              <div style={statBox}><span style={label}>Concluídas</span><strong style={{ fontSize: '1.15rem' }}>{s.concluidas}</strong></div>
-              <div style={statBox}><span style={label}>Taxa SLA</span><strong style={{ fontSize: '1.15rem', color: s.sla >= 90 ? 'var(--accent-green)' : 'var(--accent-red)' }}>{s.sla}%</strong></div>
-              <div style={statBox}><span style={label}>Pendentes</span><strong style={{ fontSize: '1.15rem', color: 'var(--accent-orange)' }}>{s.pending}</strong></div>
-              <div style={statBox}><span style={label}>Total PRs</span><strong style={{ fontSize: '1.15rem' }}>{s.total}</strong></div>
-              <div style={{ ...statBox, borderLeft: '2px solid var(--accent-blue)' }}><span style={label}>Média Diária</span><strong style={{ fontSize: '1.05rem', color: 'var(--accent-blue)' }}>{s.movingAverage} <small style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500 }}>/dia</small></strong></div>
-              <div style={{ ...statBox, borderLeft: '2px solid var(--accent-purple)' }}><span style={label}>Tempo Est./Dia</span><strong style={{ fontSize: '1.05rem', color: 'var(--accent-purple)' }}>{s.estimatedHours} <small style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 500 }}>h/dia</small></strong></div>
-            </div>
+            {(() => {
+              const R = 34, C = 2 * Math.PI * R;
+              const okFrac = s.concluidas > 0 ? s.noPrazo / s.concluidas : 1;
+              const slaColor = s.sla >= 90 ? 'var(--accent-green)' : s.sla >= 0 ? 'var(--accent-orange)' : 'var(--accent-red)';
+              const share = teamConcluidas > 0 ? (s.concluidas / teamConcluidas) * 100 : 0;
+              const shareTxt = share > 0 && share < 1 ? share.toFixed(1) : Math.round(share);
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                  {/* Anel SLA: verde = no prazo, vermelho = atrasadas */}
+                  <div style={{ ...statBox, flexDirection: 'row', flexWrap: 'wrap', gap: '10px', flex: 1, justifyContent: 'center' }}>
+                    <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+                      <svg width="76" height="76" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="42" cy="42" r={R} fill="none" stroke={s.concluidas > 0 ? 'var(--accent-red)' : 'rgba(255,255,255,0.08)'} strokeOpacity={s.concluidas > 0 ? 0.85 : 1} strokeWidth="8" />
+                        {s.concluidas > 0 && (
+                          <circle cx="42" cy="42" r={R} fill="none" stroke="var(--accent-green)" strokeWidth="8" strokeLinecap={okFrac < 1 ? 'round' : 'butt'}
+                            strokeDasharray={`${C * okFrac} ${C}`} style={{ transition: 'stroke-dasharray 0.8s ease' }} />
+                        )}
+                      </svg>
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <strong style={{ fontSize: '1.05rem', fontWeight: 800, color: slaColor, lineHeight: 1 }}>{s.sla}%</strong>
+                        <span style={{ ...label, fontSize: '0.5rem', marginTop: '2px' }}>SLA</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.68rem', minWidth: 0 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-green)' }} /> <strong>{s.noPrazo}</strong> <span style={{ color: 'var(--text-muted)' }}>no prazo</span></span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-red)' }} /> <strong>{s.atrasadas}</strong> <span style={{ color: 'var(--text-muted)' }}>atrasadas</span></span>
+                    </div>
+                  </div>
+
+                  {/* Métricas compactas */}
+                  <div style={{ ...statBox, alignItems: 'stretch', gap: '6px' }}>
+                    {[
+                      ['Concluídas', s.concluidas, 'var(--text-primary, #fff)'],
+                      ['Total PRs', s.total, 'var(--text-primary, #fff)'],
+                      ['Média/Dia', s.movingAverage, 'var(--accent-blue)'],
+                    ].map(([l, v, c]) => (
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <span style={label}>{l}</span>
+                        <strong style={{ fontSize: '0.95rem', fontWeight: 800, color: c }}>{v}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Participação na equipe */}
+                  <div style={{ ...statBox, alignItems: 'stretch', textAlign: 'left', gap: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={label}>Participação na equipe</span>
+                      <strong style={{ fontSize: '0.8rem', color: 'var(--accent-purple)' }}>{shareTxt}%</strong>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                      <div style={{ width: `${share}%`, height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, var(--accent-blue), var(--accent-purple))', transition: 'width 0.8s ease' }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>

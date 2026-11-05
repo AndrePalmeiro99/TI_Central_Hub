@@ -870,10 +870,98 @@ app.post('/api/admin/ti/royalties', authenticateToken, requireAdmin, async (req,
 
 
 // ==========================================
-// 5. PROXY TRANSPARENTE ONETY NO BACKEND
+// 5. PROXY TRANSPARENTE ONETY NO BACKEND COM JWT AUTO-REFRESH
 // ==========================================
-// FIX C-2: chave não pode ter fallback hardcoded no código-fonte
 const ONETY_API_KEY = process.env.ONETY_API_KEY || process.env.VITE_ONETY_API_KEY || '';
+const ONETY_AUTH_EMAIL = process.env.ONETY_AUTH_EMAIL || '';
+const ONETY_AUTH_PASSWORD = process.env.ONETY_AUTH_PASSWORD || '';
+
+let cachedOnetyJwt = null;
+let cachedOnetyJwtExpiresAt = 0;
+
+async function getOnetyBearerToken() {
+  if (!ONETY_AUTH_EMAIL || !ONETY_AUTH_PASSWORD) return null;
+  const now = Date.now();
+  if (cachedOnetyJwt && cachedOnetyJwtExpiresAt > now + 60000) {
+    return cachedOnetyJwt;
+  }
+  try {
+    const res = await fetch('https://back.cfonety.com.br/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: ONETY_AUTH_EMAIL,
+        senha: ONETY_AUTH_PASSWORD,
+        password: ONETY_AUTH_PASSWORD
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.token) {
+      cachedOnetyJwt = data.token;
+      // Default de 7 horas de validade para renovar antes de expirar
+      cachedOnetyJwtExpiresAt = now + 7 * 60 * 60 * 1000;
+      return cachedOnetyJwt;
+    }
+  } catch (err) {
+    console.error('[Onety Auth] Falha ao renovar token JWT de background:', err.message);
+  }
+  return null;
+}
+
+// Rota agregadora para retornar todas as tarefas do Processo 62 (todas as franquias)
+app.get('/api/onety/tarefas-completas', async (req, res) => {
+  try {
+    const token = await getOnetyBearerToken();
+    if (token) {
+      const resp = await fetch('https://back.cfonety.com.br/central-tecnologia/dashboard/detalhes-processo-62?categoria=total', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Empresa-Id': '23',
+          'Content-Type': 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const rawTasks = await resp.json();
+        if (Array.isArray(rawTasks)) {
+          // Normaliza formato compatível com o frontend
+          const normalized = rawTasks.map(t => ({
+            id: t.id,
+            assunto: t.assunto || 'CADASTRO DA EMPRESA',
+            descricao: t.descricao || '',
+            empresa_id: t.empresa_id || 23,
+            empresa: {
+              nome: t.cliente_nome || t.empresa_nome || 'N/A',
+              cnpj: t.cnpj || t.cliente_cnpj || null,
+              valor_mrr: null,
+              honorario: null
+            },
+            cliente: {
+              id: t.cliente_id,
+              nome: t.cliente_nome || 'N/A',
+              cnpj: t.cnpj || t.cliente_cnpj || null,
+              valor_mrr: null,
+              honorario: null
+            },
+            franqueado: t.empresa_abriu_processo_nome || t.empresa_nome || 'Matriz',
+            data_prazo: t.data_prazo,
+            data_criacao: t.criado_em,
+            data_conclusao: t.data_conclusao,
+            status: t.status === 'concluída' ? 'concluida_no_prazo' : (t.status || 'pendente'),
+            comentarios_count: 0,
+            anexos_count: 0
+          }));
+          return res.json(normalized);
+        }
+      }
+    }
+    // Fallback para API key caso não haja JWT configurado
+    res.json([]);
+  } catch (err) {
+    console.error('[Onety API] Erro ao buscar tarefas completas:', err.message);
+    res.json([]);
+  }
+});
 
 // Proxy Onety: autenticação opcional (frontend mesmo-domínio usa token se disponível)
 const authenticateTokenOptional = (req, res, next) => {
@@ -889,21 +977,26 @@ const authenticateTokenOptional = (req, res, next) => {
   });
 };
 
-// FIX M-8: proxy com auth opcional + body forward
+// FIX M-8: proxy com auth opcional + body forward + injeção segura de JWT/API Key
 app.use('/onety-proxy', authenticateTokenOptional, async (req, res) => {
-  if (!ONETY_API_KEY) {
-    return res.status(503).json({ error: 'Chave Onety não configurada.' });
-  }
   try {
+    const bearerToken = await getOnetyBearerToken();
     const targetUrl = `https://back.cfonety.com.br${req.url}`;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+
+    if (bearerToken) {
+      headers['Authorization'] = `Bearer ${bearerToken}`;
+      headers['X-Empresa-Id'] = '23';
+    } else if (ONETY_API_KEY) {
+      headers['x-api-key'] = ONETY_API_KEY;
+    }
+
     const fetchOptions = {
       method: req.method,
-      headers: {
-        'x-api-key': ONETY_API_KEY,
-        'Content-Type': 'application/json'
-      }
+      headers
     };
-    // FIX B-4: passar body em métodos que suportam
     if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
       fetchOptions.body = JSON.stringify(req.body);
     }

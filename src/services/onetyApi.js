@@ -49,6 +49,15 @@ async function fetchWithFallback(apiPath, directEndpoint, queryParams = '') {
  */
 export const fetchOnetyTasks = async () => {
   try {
+    // 1. Tenta endpoint completo unificado do backend (todas as franquias via JWT)
+    const directRes = await fetch('/api/onety/tarefas-completas').catch(() => null);
+    if (directRes && directRes.ok) {
+      const data = await directRes.json().catch(() => []);
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+    // 2. Fallback padrão via proxy
     return await fetchWithFallback('/api/tarefas', 'central-tecnologia/dashboard-externo/tarefas');
   } catch (error) {
     console.error('Falha ao buscar tarefas do Onety:', error);

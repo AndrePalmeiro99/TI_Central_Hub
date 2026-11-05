@@ -1499,20 +1499,20 @@ function App() {
                 for (const a of taskDetailsOnety.anexos) {
                   modalAnexos.push({
                     id: a.id,
-                    nome: a.nome || a.nomeArquivo || 'Documento sem nome',
-                    url: a.downloadUrl ? `https://back.cfonety.com.br${a.downloadUrl}` : (a.url || `https://back.cfonety.com.br/gestao/anexo/download/${a.id}`),
-                    atividade: null
+                    nome: a.nome || a.nome_arquivo || a.nomeArquivo || 'Documento sem nome',
+                    url: a.url || `/api/onety/anexo/${a.id}/download`,
+                    atividade: a.atividade || null
                   });
                 }
               }
-              if (taskDetailsOnety && Array.isArray(taskDetailsOnety.atividades)) {
+              if (modalAnexos.length === 0 && taskDetailsOnety && Array.isArray(taskDetailsOnety.atividades)) {
                 for (const atv of taskDetailsOnety.atividades) {
                   if (Array.isArray(atv.anexos)) {
                     for (const a of atv.anexos) {
                       modalAnexos.push({
                         id: a.id,
-                        nome: a.nomeArquivo || a.nome || 'Documento sem nome',
-                        url: a.downloadUrl ? `https://back.cfonety.com.br${a.downloadUrl}` : (a.url || `https://back.cfonety.com.br/gestao/anexo/download/${a.id}`),
+                        nome: a.nomeArquivo || a.nome_arquivo || a.nome || 'Documento sem nome',
+                        url: a.url || `/api/onety/anexo/${a.id}/download`,
                         atividade: atv.texto || atv.nome || 'Trâmite'
                       });
                     }

@@ -112,6 +112,14 @@ export const fetchOnetyTransbordos = async () => {
 export const fetchTaskDetails = async (taskId) => {
   if (!taskId) return null;
   try {
+    // 1. Prioriza endpoint unificado do backend (tarefa + pai PR + anexos reais)
+    const directRes = await fetch(`/api/onety/tarefa-detalhes/${taskId}`).catch(() => null);
+    if (directRes && directRes.ok) {
+      const data = await directRes.json().catch(() => null);
+      if (data) return data;
+    }
+
+    // 2. Fallback legado via proxy
     const res = await fetch(`/onety-proxy/gestao/pr-externo/tarefas/${taskId}?t=${Date.now()}`, {
       headers: { 'x-api-key': ONETY_API_KEY }
     });

@@ -963,6 +963,131 @@ app.get('/api/onety/tarefas-completas', async (req, res) => {
   }
 });
 
+// Endpoint otimizado para detalhes, status de contrato e anexos da tarefa (e da tarefa pai/PR)
+app.get('/api/onety/tarefa-detalhes/:id', async (req, res) => {
+  const taskId = req.params.id;
+  try {
+    const token = await getOnetyBearerToken();
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'X-Empresa-Id': '23',
+      'Content-Type': 'application/json'
+    };
+
+    // 1. Busca dados da tarefa
+    let mainTask = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${taskId}`, { headers })
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null);
+
+    if (!mainTask) {
+      return res.status(404).json({ error: 'Tarefa não encontrada.' });
+    }
+
+    // 2. Se a tarefa tiver pai (PR Comercial), prioriza o pai para verificar Aceite e anexos
+    const prId = mainTask.tarefa_pai_id || (mainTask.processo_id === 61 ? mainTask.id : null);
+    let prTask = null;
+    let atvsPr = [];
+
+    if (prId && prId !== mainTask.id) {
+      prTask = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${prId}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null);
+
+      atvsPr = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${prId}/atividades-com-status`, { headers })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []);
+    } else {
+      atvsPr = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${taskId}/atividades-com-status`, { headers })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []);
+    }
+
+    // 3. Coleta os anexos de cada atividade do PR (ou tarefa principal)
+    const anexosFinais = [];
+    let hasContratoAnexado = false;
+
+    if (Array.isArray(atvsPr) && atvsPr.length > 0) {
+      for (const atv of atvsPr) {
+        const atvId = atv.atividadeTarefaId;
+        const txt = (atv.texto || atv.nome || atv.descricao || '').toUpperCase();
+        const isAceiteAtv = txt.includes('ACEITE') || txt.includes('PROPOSTA') || atv.ordem === 1;
+
+        if (atvId) {
+          const files = await fetch(`https://back.cfonety.com.br/gestao/tarefas/atividade/${atvId}/anexos`, { headers })
+            .then(r => r.ok ? r.json() : [])
+            .catch(() => []);
+
+          if (Array.isArray(files) && files.length > 0) {
+            for (const f of files) {
+              const fileObj = {
+                id: f.id,
+                nome: f.nome_arquivo || f.nome || 'Documento sem nome',
+                url: `/api/onety/anexo/${f.id}/download`,
+                atividade: atv.texto || 'Atividade',
+                criado_em: f.criado_em
+              };
+              anexosFinais.push(fileObj);
+
+              if (isAceiteAtv) {
+                hasContratoAnexado = true;
+              }
+            }
+          }
+        }
+
+        // Se a atividade de aceite foi marcada como concluída mesmo sem anexo direto
+        if (isAceiteAtv && (atv.concluida === 1 || atv.concluida === true)) {
+          hasContratoAnexado = true;
+        }
+      }
+    }
+
+    res.json({
+      ...mainTask,
+      pr_id: prId,
+      pr_task: prTask,
+      tem_contrato_anexado: hasContratoAnexado,
+      atividades: atvsPr,
+      anexos: anexosFinais
+    });
+  } catch (err) {
+    console.error('[Onety Detalhes] Erro ao buscar detalhes e anexos:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar detalhes da tarefa.' });
+  }
+});
+
+// Proxy seguro para download de anexos do Onety (stream do binário)
+app.get('/api/onety/anexo/:id/download', async (req, res) => {
+  try {
+    const token = await getOnetyBearerToken();
+    const anexoId = req.params.id;
+    const resp = await fetch(`https://back.cfonety.com.br/gestao/tarefas/anexo/${anexoId}/download`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-Empresa-Id': '23'
+      }
+    });
+
+    if (!resp.ok) {
+      return res.status(resp.status).send('Anexo não encontrado.');
+    }
+
+    const contentType = resp.headers.get('content-type') || 'application/octet-stream';
+    const contentDisposition = resp.headers.get('content-disposition');
+
+    res.setHeader('Content-Type', contentType);
+    if (contentDisposition) {
+      res.setHeader('Content-Disposition', contentDisposition);
+    }
+
+    const arrayBuffer = await resp.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err) {
+    console.error('[Onety Download] Erro ao baixar anexo:', err.message);
+    res.status(500).send('Erro ao baixar anexo.');
+  }
+});
+
 // Proxy Onety: autenticação opcional (frontend mesmo-domínio usa token se disponível)
 const authenticateTokenOptional = (req, res, next) => {
   const authHeader = req.headers['authorization'];

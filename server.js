@@ -949,7 +949,9 @@ app.get('/api/onety/tarefas-completas', async (req, res) => {
             data_conclusao: t.data_conclusao,
             status: t.status === 'concluída' ? 'concluida_no_prazo' : (t.status || 'pendente'),
             comentarios_count: 0,
-            anexos_count: 0
+            anexos_count: 0,
+            tarefa_pai_id: t.tarefa_pai_id || null,
+            pr_id: t.tarefa_pai_id || null
           }));
           return res.json(normalized);
         }

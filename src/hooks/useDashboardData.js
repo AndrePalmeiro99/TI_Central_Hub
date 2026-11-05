@@ -1085,8 +1085,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
           const parsedComments = t.comentarios || t.historico || [];
           return {
             id: t.id,
-            pr_id: matchedPr?.id || null,
-            pr_url: matchedPr?.id ? `https://cfonety.com.br/gestao/tarefas/${matchedPr.id}/atividades` : `https://cfonety.com.br/gestao/tarefas/${t.id}/atividades`,
+            pr_id: t.tarefa_pai_id || t.pr_id || matchedPr?.id || null,
+            pr_url: (t.tarefa_pai_id || t.pr_id || matchedPr?.id) ? `https://cfonety.com.br/gestao/tarefas/${t.tarefa_pai_id || t.pr_id || matchedPr?.id}/atividades` : `https://cfonety.com.br/gestao/tarefas/${t.id}/atividades`,
             pr_assunto: matchedPr?.assunto || null,
             matched_prs: formattedMatchedPrs,
             created_at: t.data_criacao,

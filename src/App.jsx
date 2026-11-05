@@ -1998,57 +1998,61 @@ function App() {
         >
             {activeTab === 'geral' ? (
               <>
-                {/* 1. Top Metrics */}
-                <div className="metric-row">
-                  <MetricCard 
-                    title="Entregas Hoje" 
-                    value={metrics.cHoje} 
-                    subtitle="Concluídas nas últimas 24h" 
-                    accentColor="var(--accent-green)" 
-                    onClick={() => setActiveOperacionalModal('hoje')}
-                    glowClass="glow-green"
-                  />
-                  <MetricCard 
-                    title="Eficiência Mês" 
-                    value={metrics.cMes} 
-                    subtitle="Total processado no mês" 
-                    accentColor="var(--accent-blue)" 
-                    onClick={() => setActiveOperacionalModal('mes')}
-                    glowClass="glow-blue"
-                  />
-                  <MetricCard 
-                    title="Fila Ativa" 
-                    value={metrics.fAtiva} 
-                    subtitle="Pendentes de cadastro" 
-                    accentColor="var(--accent-orange)" 
-                    onClick={() => setActiveOperacionalModal('fila')}
-                    glowClass="glow-orange"
-                  />
-                  <MetricCard 
-                    title="Taxa de SLA" 
-                    value={`${metrics.sla}%`} 
-                    subtitle="Conformidade de prazo" 
-                    accentColor={metrics.sla > 90 ? "var(--accent-green)" : "var(--accent-red)"} 
-                    onClick={() => setActiveOperacionalModal('sla')}
-                    glowClass={metrics.sla > 90 ? "glow-green" : "glow-red"}
-                  />
-                </div>
-
-                {/* 2. Operational Charts */}
-                <div className="content-grid">
-                  <div className="glass-panel breakdown-card">
-                    <MonthlyTrendChart data={dashboardData} timeRange={trendRange} onTimeRangeChange={setTrendRange} />
-                  </div>
-                  <div className="glass-panel breakdown-card">
-                    <TeamPerformanceSummary
-                      data={dashboardData}
-                      timeRange={trendRange}
-                      onOpenTeam={(isManager || isAdmin) ? () => setActiveTab('colaboradores') : undefined}
-                      canEdit={isManager}
-                      session={session}
+                {/* 1. Top Metrics (Apenas para Manager e Admin) */}
+                {(isManager || isAdmin) && (
+                  <div className="metric-row">
+                    <MetricCard 
+                      title="Entregas Hoje" 
+                      value={metrics.cHoje} 
+                      subtitle="Concluídas nas últimas 24h" 
+                      accentColor="var(--accent-green)" 
+                      onClick={() => setActiveOperacionalModal('hoje')}
+                      glowClass="glow-green"
+                    />
+                    <MetricCard 
+                      title="Eficiência Mês" 
+                      value={metrics.cMes} 
+                      subtitle="Total processado no mês" 
+                      accentColor="var(--accent-blue)" 
+                      onClick={() => setActiveOperacionalModal('mes')}
+                      glowClass="glow-blue"
+                    />
+                    <MetricCard 
+                      title="Fila Ativa" 
+                      value={metrics.fAtiva} 
+                      subtitle="Pendentes de cadastro" 
+                      accentColor="var(--accent-orange)" 
+                      onClick={() => setActiveOperacionalModal('fila')}
+                      glowClass="glow-orange"
+                    />
+                    <MetricCard 
+                      title="Taxa de SLA" 
+                      value={`${metrics.sla}%`} 
+                      subtitle="Conformidade de prazo" 
+                      accentColor={metrics.sla > 90 ? "var(--accent-green)" : "var(--accent-red)"} 
+                      onClick={() => setActiveOperacionalModal('sla')}
+                      glowClass={metrics.sla > 90 ? "glow-green" : "glow-red"}
                     />
                   </div>
-                </div>
+                )}
+
+                {/* 2. Operational Charts (Apenas para Manager e Admin) */}
+                {(isManager || isAdmin) && (
+                  <div className="content-grid">
+                    <div className="glass-panel breakdown-card">
+                      <MonthlyTrendChart data={dashboardData} timeRange={trendRange} onTimeRangeChange={setTrendRange} />
+                    </div>
+                    <div className="glass-panel breakdown-card">
+                      <TeamPerformanceSummary
+                        data={dashboardData}
+                        timeRange={trendRange}
+                        onOpenTeam={(isManager || isAdmin) ? () => setActiveTab('colaboradores') : undefined}
+                        canEdit={isManager}
+                        session={session}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* 3. The Critical Queue (The Heart of the System) */}
                 <div className="glass-panel" style={{ padding: '2.5rem' }}>

@@ -872,6 +872,8 @@ app.post('/api/admin/ti/royalties', authenticateToken, requireAdmin, async (req,
 // ==========================================
 // 5. PROXY TRANSPARENTE ONETY NO BACKEND COM JWT AUTO-REFRESH
 // ==========================================
+const ONETY_BACKEND_URL = (process.env.ONETY_BACKEND_URL || 'https://back.cfonety.com.br').replace(/\/$/, '');
+const ONETY_EMPRESA_ID = process.env.ONETY_EMPRESA_ID || '23';
 const ONETY_API_KEY = process.env.ONETY_API_KEY || process.env.VITE_ONETY_API_KEY || '';
 const ONETY_AUTH_EMAIL = process.env.ONETY_AUTH_EMAIL || '';
 const ONETY_AUTH_PASSWORD = process.env.ONETY_AUTH_PASSWORD || '';
@@ -886,7 +888,7 @@ async function getOnetyBearerToken() {
     return cachedOnetyJwt;
   }
   try {
-    const res = await fetch('https://back.cfonety.com.br/auth/login', {
+    const res = await fetch(`${ONETY_BACKEND_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -914,10 +916,10 @@ app.get('/api/onety/tarefas-completas', async (req, res) => {
   try {
     const token = await getOnetyBearerToken();
     if (token) {
-      const resp = await fetch('https://back.cfonety.com.br/central-tecnologia/dashboard/detalhes-processo-62?categoria=total', {
+      const resp = await fetch(`${ONETY_BACKEND_URL}/central-tecnologia/dashboard/detalhes-processo-62?categoria=total`, {
         headers: {
           'Authorization': `Bearer ${token}`,
-          'X-Empresa-Id': '23',
+          'X-Empresa-Id': ONETY_EMPRESA_ID,
           'Content-Type': 'application/json'
         }
       });
@@ -965,6 +967,130 @@ app.get('/api/onety/tarefas-completas', async (req, res) => {
   }
 });
 
+// Endpoint otimizado para TV e Painel: métricas de cadastro de empresas (Processo 62)
+app.options(['/api/cadastro-empresa-tv', '/api/onety/cadastro-empresa-tv'], cors());
+app.get(['/api/cadastro-empresa-tv', '/api/onety/cadastro-empresa-tv'], async (req, res) => {
+  // Configuração CORS explícita e Cache-Control para painéis públicos de TV
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+  try {
+    const token = await getOnetyBearerToken();
+    if (!token) {
+      return res.status(500).json({ error: 'Falha na autenticação com a API Onety.' });
+    }
+
+    const resp = await fetch(`${ONETY_BACKEND_URL}/central-tecnologia/dashboard/detalhes-processo-62?categoria=total`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-Empresa-Id': ONETY_EMPRESA_ID,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!resp.ok) {
+      return res.status(resp.status).json({ error: 'Erro ao consultar tarefas no Onety.' });
+    }
+
+    const rawTasks = await resp.json();
+    if (!Array.isArray(rawTasks)) {
+      return res.status(502).json({ error: 'Resposta inválida do Onety.' });
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const mes_nome = `${monthNames[currentMonth]} de ${currentYear}`;
+
+    // Ignorar canceladas, distratos ou reprovadas
+    const validTasks = rawTasks.filter(t => {
+      const s = (t.status || '').toLowerCase();
+      const a = (t.assunto || '').toLowerCase();
+      const d = (t.descricao || '').toLowerCase();
+      const isIgnored = s.includes('cancel') || s.includes('distrato') || s.includes('reprov') ||
+                        a.includes('cancel') || a.includes('distrato') || a.includes('reprov') ||
+                        d.includes('cancel') || d.includes('distrato') || d.includes('reprov');
+      return !isIgnored;
+    });
+
+    let total_mes = 0;
+    let concluidas = 0;
+    let pendentes = 0;
+    let atrasadas = 0;
+    const lista_atrasadas = [];
+
+    validTasks.forEach(t => {
+      const createdAt = t.criado_em ? new Date(t.criado_em) : null;
+      const concludedAt = t.data_conclusao ? new Date(t.data_conclusao) : null;
+      const deadline = t.data_prazo ? new Date(t.data_prazo) : null;
+      const isCompleted = (t.status || '').toLowerCase() === 'concluída';
+
+      // total_mes: tarefas criadas no mês corrente
+      if (createdAt && createdAt.getFullYear() === currentYear && createdAt.getMonth() === currentMonth) {
+        total_mes++;
+      }
+
+      if (isCompleted) {
+        // concluidas: concluídas no mês corrente
+        if (concludedAt && concludedAt.getFullYear() === currentYear && concludedAt.getMonth() === currentMonth) {
+          concluidas++;
+        } else if (!concludedAt && createdAt && createdAt.getFullYear() === currentYear && createdAt.getMonth() === currentMonth) {
+          concluidas++;
+        }
+      } else {
+        // Não concluídas: checa atraso (> 24h ou prazo vencido)
+        const horasAbertas = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60) : 0;
+        const isAtrasada = horasAbertas > 24 || (deadline && now > deadline);
+
+        if (isAtrasada) {
+          atrasadas++;
+          let diasAtraso = 1;
+          if (deadline && now > deadline) {
+            diasAtraso = Math.max(1, Math.floor((now.getTime() - deadline.getTime()) / (1000 * 60 * 60 * 24)));
+          } else if (createdAt) {
+            diasAtraso = Math.max(1, Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)));
+          }
+
+          const dataAberturaStr = createdAt
+            ? createdAt.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' })
+            : 'N/A';
+
+          lista_atrasadas.push({
+            id: t.id,
+            empresa_nome: (t.cliente_nome || t.empresa_nome || 'EMPRESA SEM NOME').trim(),
+            data_abertura: dataAberturaStr,
+            responsavel: (t.responsavel_nome || 'Não atribuído').trim(),
+            dias_atraso: diasAtraso
+          });
+        } else {
+          pendentes++;
+        }
+      }
+    });
+
+    // Ordenação decrescente por dias_atraso
+    lista_atrasadas.sort((a, b) => b.dias_atraso - a.dias_atraso);
+
+    return res.json({
+      mes_nome,
+      total_mes,
+      pendentes,
+      atrasadas,
+      concluidas,
+      lista_atrasadas
+    });
+  } catch (err) {
+    console.error('[API TV] Erro ao gerar métricas para TV:', err.message);
+    return res.status(500).json({ error: 'Erro interno ao processar métricas de TV.' });
+  }
+});
+
 // Endpoint otimizado para detalhes, status de contrato e anexos da tarefa (e da tarefa pai/PR)
 app.get('/api/onety/tarefa-detalhes/:id', async (req, res) => {
   const taskId = req.params.id;
@@ -972,12 +1098,12 @@ app.get('/api/onety/tarefa-detalhes/:id', async (req, res) => {
     const token = await getOnetyBearerToken();
     const headers = {
       'Authorization': `Bearer ${token}`,
-      'X-Empresa-Id': '23',
+      'X-Empresa-Id': ONETY_EMPRESA_ID,
       'Content-Type': 'application/json'
     };
 
     // 1. Busca dados da tarefa
-    let mainTask = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${taskId}`, { headers })
+    let mainTask = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/${taskId}`, { headers })
       .then(r => r.ok ? r.json() : null)
       .catch(() => null);
 
@@ -991,15 +1117,15 @@ app.get('/api/onety/tarefa-detalhes/:id', async (req, res) => {
     let atvsPr = [];
 
     if (prId && prId !== mainTask.id) {
-      prTask = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${prId}`, { headers })
+      prTask = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/${prId}`, { headers })
         .then(r => r.ok ? r.json() : null)
         .catch(() => null);
 
-      atvsPr = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${prId}/atividades-com-status`, { headers })
+      atvsPr = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/${prId}/atividades-com-status`, { headers })
         .then(r => r.ok ? r.json() : [])
         .catch(() => []);
     } else {
-      atvsPr = await fetch(`https://back.cfonety.com.br/gestao/tarefas/${taskId}/atividades-com-status`, { headers })
+      atvsPr = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/${taskId}/atividades-com-status`, { headers })
         .then(r => r.ok ? r.json() : [])
         .catch(() => []);
     }
@@ -1015,7 +1141,7 @@ app.get('/api/onety/tarefa-detalhes/:id', async (req, res) => {
         const isAceiteAtv = txt.includes('ACEITE') || txt.includes('PROPOSTA') || atv.ordem === 1;
 
         if (atvId) {
-          const files = await fetch(`https://back.cfonety.com.br/gestao/tarefas/atividade/${atvId}/anexos`, { headers })
+          const files = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/atividade/${atvId}/anexos`, { headers })
             .then(r => r.ok ? r.json() : [])
             .catch(() => []);
 
@@ -1063,10 +1189,10 @@ app.get('/api/onety/anexo/:id/download', async (req, res) => {
   try {
     const token = await getOnetyBearerToken();
     const anexoId = req.params.id;
-    const resp = await fetch(`https://back.cfonety.com.br/gestao/tarefas/anexo/${anexoId}/download`, {
+    const resp = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/anexo/${anexoId}/download`, {
       headers: {
         'Authorization': `Bearer ${token}`,
-        'X-Empresa-Id': '23'
+        'X-Empresa-Id': ONETY_EMPRESA_ID
       }
     });
 
@@ -1108,14 +1234,14 @@ const authenticateTokenOptional = (req, res, next) => {
 app.use('/onety-proxy', authenticateTokenOptional, async (req, res) => {
   try {
     const bearerToken = await getOnetyBearerToken();
-    const targetUrl = `https://back.cfonety.com.br${req.url}`;
+    const targetUrl = `${ONETY_BACKEND_URL}${req.url}`;
     const headers = {
       'Content-Type': 'application/json'
     };
 
     if (bearerToken) {
       headers['Authorization'] = `Bearer ${bearerToken}`;
-      headers['X-Empresa-Id'] = '23';
+      headers['X-Empresa-Id'] = ONETY_EMPRESA_ID;
     } else if (ONETY_API_KEY) {
       headers['x-api-key'] = ONETY_API_KEY;
     }

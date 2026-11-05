@@ -620,6 +620,7 @@ function App() {
   // Felipe (TI) é o Gerente Supremo pelo e-mail ou pela role
   const isManager = userEmail === 'ti@cfcontabilidade.com' || userRole === 'manager';
   const isAdmin = isAdminEmail || userRole === 'administrator' || userRole === 'admin';
+  const isCollaborator = !isManager && !isAdmin && userRole === 'collaborator';
   const isGuest = userRole === 'guest';
   const isAuthorized = isManager || isAdmin || userRole === 'collaborator';
 
@@ -678,6 +679,11 @@ function App() {
         const isCancelled = d.is_cancelled === true;
         const isBackoffice = backofficeMap[d.id] !== undefined ? backofficeMap[d.id] : d.is_backoffice === true;
 
+        if (isCollaborator) {
+          // Na visão de colaborador, mostra todas as empresas da mesma forma
+          return true;
+        }
+
         if (isCancelled) {
           if (queueFilter !== 'cancelados' && queueFilter !== 'geral') {
             return false;
@@ -720,7 +726,7 @@ function App() {
         }
         return parseDate(b.created_at) - parseDate(a.created_at);
       });
-  }, [dashboardData, searchTerm, queueFilter, metadataMap]);
+  }, [dashboardData, searchTerm, queueFilter, metadataMap, isCollaborator]);
 
   // Filters for History Modal (full history from January to today)
   const concludedTasks = useMemo(() => {
@@ -923,144 +929,146 @@ function App() {
               <h2 className="font-outfit" style={{ fontSize: '1.6rem', marginTop: '4px', fontWeight: '800' }}>{selectedTask.empresa_nome}</h2>
             </div>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', position: 'relative' }}>
-              {selectedTask.matched_prs && selectedTask.matched_prs.length > 1 ? (
-                <div style={{ position: 'relative' }}>
-                  <button 
-                    onClick={() => setShowPrPopover(!showPrPopover)}
-                    style={{ 
-                      color: 'var(--accent-blue)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      gap: '6px',
-                      background: showPrPopover ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.08)', 
-                      border: '1px solid rgba(59, 130, 246, 0.25)', 
-                      padding: '0 10px',
-                      height: '38px', 
-                      borderRadius: '10px', 
-                      transition: 'all 0.2s',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: '700'
-                    }} 
-                    className="hover-bright" 
-                    title={`${selectedTask.matched_prs.length} PRs comerciais encontrados. Clique para escolher.`}
-                  >
-                    <ExternalLink size={15} />
-                    <span>{selectedTask.matched_prs.length} PRs</span>
-                  </button>
-
-                  {/* Popover Dropdown com a lista de todos os PRs */}
-                  {showPrPopover && (
-                    <div 
-                      className="glass-panel"
-                      style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 8px)',
-                        right: 0,
-                        width: '320px',
-                        background: 'rgba(15, 23, 42, 0.96)',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                        borderRadius: '12px',
-                        boxShadow: '0 15px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
-                        backdropFilter: 'blur(16px)',
-                        padding: '12px',
-                        zIndex: 1000,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px'
-                      }}
+              {!isCollaborator && (
+                selectedTask.matched_prs && selectedTask.matched_prs.length > 1 ? (
+                  <div style={{ position: 'relative' }}>
+                    <button 
+                      onClick={() => setShowPrPopover(!showPrPopover)}
+                      style={{ 
+                        color: 'var(--accent-blue)', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: '6px',
+                        background: showPrPopover ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.08)', 
+                        border: '1px solid rgba(59, 130, 246, 0.25)', 
+                        padding: '0 10px',
+                        height: '38px', 
+                        borderRadius: '10px', 
+                        transition: 'all 0.2s',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '700'
+                      }} 
+                      className="hover-bright" 
+                      title={`${selectedTask.matched_prs.length} PRs comerciais encontrados. Clique para escolher.`}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                          PRs Comerciais ({selectedTask.matched_prs.length})
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Escolha qual abrir:</span>
-                      </div>
+                      <ExternalLink size={15} />
+                      <span>{selectedTask.matched_prs.length} PRs</span>
+                    </button>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '240px', overflowY: 'auto', paddingRight: '2px' }}>
-                        {selectedTask.matched_prs.map((pr, idx) => (
-                          <a
-                            key={pr.id || idx}
-                            href={pr.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '4px',
-                              padding: '8px 10px',
-                              borderRadius: '8px',
-                              background: 'rgba(255, 255, 255, 0.03)',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
-                              textDecoration: 'none',
-                              color: '#fff',
-                              transition: 'all 0.15s'
-                            }}
-                            className="hover-bright"
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--accent-blue)' }}>
-                                PR #{pr.id}
-                              </span>
-                              <span style={{
-                                fontSize: '0.68rem',
-                                fontWeight: '700',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                background: pr.is_concluido ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.15)',
-                                color: pr.is_concluido ? 'var(--accent-green)' : 'var(--accent-orange)',
-                                border: `1px solid ${pr.is_concluido ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`
-                              }}>
-                                {pr.status}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {pr.assunto}
-                            </div>
-                            {pr.responsavel && (
-                              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>
-                                Resp: {pr.responsavel}
-                              </div>
-                            )}
-                          </a>
-                        ))}
-                      </div>
-
-                      <a
-                        href={`https://cfonety.com.br/gestao/tarefas/${selectedTask.id}/atividades`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                    {/* Popover Dropdown com a lista de todos os PRs */}
+                    {showPrPopover && (
+                      <div 
+                        className="glass-panel"
                         style={{
-                          marginTop: '4px',
-                          paddingTop: '8px',
-                          borderTop: '1px solid rgba(255,255,255,0.08)',
-                          fontSize: '0.72rem',
-                          color: 'var(--text-muted)',
-                          textDecoration: 'none',
+                          position: 'absolute',
+                          top: 'calc(100% + 8px)',
+                          right: 0,
+                          width: '320px',
+                          background: 'rgba(15, 23, 42, 0.96)',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          borderRadius: '12px',
+                          boxShadow: '0 15px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+                          backdropFilter: 'blur(16px)',
+                          padding: '12px',
+                          zIndex: 1000,
                           display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between'
+                          flexDirection: 'column',
+                          gap: '8px'
                         }}
-                        className="hover-bright"
                       >
-                        <span>Tarefa Cadastro #{selectedTask.id}</span>
-                        <ExternalLink size={12} />
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <a 
-                  href={selectedTask.pr_url || (selectedTask.pr_id ? `https://cfonety.com.br/gestao/tarefas/${selectedTask.pr_id}/atividades` : `https://cfonety.com.br/gestao/tarefas/${selectedTask.id}/atividades`)} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  style={{ color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', width: '38px', height: '38px', borderRadius: '10px', transition: 'all 0.2s' }} 
-                  className="hover-bright" 
-                  title={selectedTask.pr_id ? `Abrir PR Comercial #${selectedTask.pr_id} (Entrada de Cliente)` : "Abrir tarefa no Onety"}
-                >
-                  <ExternalLink size={18} />
-                </a>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '8px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--accent-blue)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            PRs Comerciais ({selectedTask.matched_prs.length})
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Escolha qual abrir:</span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '240px', overflowY: 'auto', paddingRight: '2px' }}>
+                          {selectedTask.matched_prs.map((pr, idx) => (
+                            <a
+                              key={pr.id || idx}
+                              href={pr.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '4px',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                border: '1px solid rgba(255, 255, 255, 0.06)',
+                                textDecoration: 'none',
+                                color: '#fff',
+                                transition: 'all 0.15s'
+                              }}
+                              className="hover-bright"
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: '700', fontSize: '0.8rem', color: 'var(--accent-blue)' }}>
+                                  PR #{pr.id}
+                                </span>
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: '700',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: pr.is_concluido ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+                                  color: pr.is_concluido ? 'var(--accent-green)' : 'var(--accent-orange)',
+                                  border: `1px solid ${pr.is_concluido ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`
+                                }}>
+                                  {pr.status}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {pr.assunto}
+                              </div>
+                              {pr.responsavel && (
+                                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>
+                                  Resp: {pr.responsavel}
+                                </div>
+                              )}
+                            </a>
+                          ))}
+                        </div>
+
+                        <a
+                          href={`https://cfonety.com.br/gestao/tarefas/${selectedTask.id}/atividades`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            marginTop: '4px',
+                            paddingTop: '8px',
+                            borderTop: '1px solid rgba(255,255,255,0.08)',
+                            fontSize: '0.72rem',
+                            color: 'var(--text-muted)',
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}
+                          className="hover-bright"
+                        >
+                          <span>Tarefa Cadastro #{selectedTask.id}</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <a 
+                    href={selectedTask.pr_url || (selectedTask.pr_id ? `https://cfonety.com.br/gestao/tarefas/${selectedTask.pr_id}/atividades` : `https://cfonety.com.br/gestao/tarefas/${selectedTask.id}/atividades`)} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', width: '38px', height: '38px', borderRadius: '10px', transition: 'all 0.2s' }} 
+                    className="hover-bright" 
+                    title={selectedTask.pr_id ? `Abrir PR Comercial #${selectedTask.pr_id} (Entrada de Cliente)` : "Abrir tarefa no Onety"}
+                  >
+                    <ExternalLink size={18} />
+                  </a>
+                )
               )}
               <button onClick={() => { setSelectedTask(null); setShowPrPopover(false); }} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '1.2rem', width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} className="hover-bright">×</button>
             </div>
@@ -1145,55 +1153,57 @@ function App() {
               </div>
             )}
 
-            {/* Honorário Chip */}
-            {isEditingHonorario ? (
-              <div className="premium-chip no-hover" style={{ padding: '4px 8px' }}>
-                <span>R$:</span>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  min="0"
-                  value={editHonorarioVal} 
-                  onChange={(e) => setEditHonorarioVal(e.target.value)}
-                  style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: '700', outline: 'none', width: '70px' }}
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleUpdateHonorario(selectedTask.id, editHonorarioVal);
-                    if (e.key === 'Escape') {
+            {/* Honorário Chip (Oculto para Collaborator) */}
+            {!isCollaborator && (
+              isEditingHonorario ? (
+                <div className="premium-chip no-hover" style={{ padding: '4px 8px' }}>
+                  <span>R$:</span>
+                  <input 
+                    type="number" 
+                    step="0.01"
+                    min="0"
+                    value={editHonorarioVal} 
+                    onChange={(e) => setEditHonorarioVal(e.target.value)}
+                    style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: '700', outline: 'none', width: '70px' }}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleUpdateHonorario(selectedTask.id, editHonorarioVal);
+                      if (e.key === 'Escape') {
+                        setIsEditingHonorario(false);
+                        setEditHonorarioVal((metadataMap[selectedTask.id]?.honorario !== undefined && metadataMap[selectedTask.id]?.honorario !== null ? metadataMap[selectedTask.id].honorario : selectedTask.honorario || 1000.00).toString());
+                      }
+                    }}
+                  />
+                  <button 
+                    onClick={() => handleUpdateHonorario(selectedTask.id, editHonorarioVal)}
+                    style={{ background: 'var(--accent-green)', border: 'none', color: '#fff', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                  >
+                    OK
+                  </button>
+                  <button 
+                    onClick={() => {
                       setIsEditingHonorario(false);
                       setEditHonorarioVal((metadataMap[selectedTask.id]?.honorario !== undefined && metadataMap[selectedTask.id]?.honorario !== null ? metadataMap[selectedTask.id].honorario : selectedTask.honorario || 1000.00).toString());
-                    }
-                  }}
-                />
-                <button 
-                  onClick={() => handleUpdateHonorario(selectedTask.id, editHonorarioVal)}
-                  style={{ background: 'var(--accent-green)', border: 'none', color: '#fff', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                    }}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem' }}
+                  >
+                    X
+                  </button>
+                </div>
+              ) : (
+                <div 
+                  className="premium-chip"
+                  onClick={() => !isGuest && setIsEditingHonorario(true)}
+                  style={{ cursor: isGuest ? 'default' : 'pointer' }}
+                  title={isGuest ? '' : 'Clique para alterar o valor'}
                 >
-                  OK
-                </button>
-                <button 
-                  onClick={() => {
-                    setIsEditingHonorario(false);
-                    setEditHonorarioVal((metadataMap[selectedTask.id]?.honorario !== undefined && metadataMap[selectedTask.id]?.honorario !== null ? metadataMap[selectedTask.id].honorario : selectedTask.honorario || 1000.00).toString());
-                  }}
-                  style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--text-muted)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem' }}
-                >
-                  X
-                </button>
-              </div>
-            ) : (
-              <div 
-                className="premium-chip"
-                onClick={() => !isGuest && setIsEditingHonorario(true)}
-                style={{ cursor: isGuest ? 'default' : 'pointer' }}
-                title={isGuest ? '' : 'Clique para alterar o valor'}
-              >
-                <span>HONORÁRIO:</span>
-                <strong style={{ color: 'var(--accent-green)' }}>
-                  {(metadataMap[selectedTask.id]?.honorario !== undefined && metadataMap[selectedTask.id]?.honorario !== null ? metadataMap[selectedTask.id].honorario : selectedTask.honorario || 1000.00).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </strong>
-                {!isGuest && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', fontWeight: 'normal' }}>(Editar)</span>}
-              </div>
+                  <span>HONORÁRIO:</span>
+                  <strong style={{ color: 'var(--accent-green)' }}>
+                    {(metadataMap[selectedTask.id]?.honorario !== undefined && metadataMap[selectedTask.id]?.honorario !== null ? metadataMap[selectedTask.id].honorario : selectedTask.honorario || 1000.00).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </strong>
+                  {!isGuest && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', fontWeight: 'normal' }}>(Editar)</span>}
+                </div>
+              )
             )}
 
             {/* Abertura Chip */}
@@ -1495,337 +1505,341 @@ function App() {
           </div>
         </div>
 
-        {/* Anexos (Onety) */}
-        <div className="premium-section-box">
-          <div className="premium-section-title">📎 Anexos e Documentos de Aceite (Onety)</div>
-          <div style={{ 
-            background: 'rgba(0,0,0,0.15)', 
-            border: '1px solid rgba(255,255,255,0.05)', 
-            borderRadius: '12px', 
-            padding: '1.25rem'
-          }}>
-            {loadingTaskDetailsOnety ? (
-              <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
-                Carregando documentos anexados...
-              </div>
-            ) : (() => {
-              const modalAnexos = [];
-              if (taskDetailsOnety && Array.isArray(taskDetailsOnety.anexos)) {
-                for (const a of taskDetailsOnety.anexos) {
-                  modalAnexos.push({
-                    id: a.id,
-                    nome: a.nome || a.nome_arquivo || a.nomeArquivo || 'Documento sem nome',
-                    url: a.url || `/api/onety/anexo/${a.id}/download`,
-                    atividade: a.atividade || null
-                  });
+        {/* Anexos (Onety) (Oculto para Collaborator) */}
+        {!isCollaborator && (
+          <div className="premium-section-box">
+            <div className="premium-section-title">📎 Anexos e Documentos de Aceite (Onety)</div>
+            <div style={{ 
+              background: 'rgba(0,0,0,0.15)', 
+              border: '1px solid rgba(255,255,255,0.05)', 
+              borderRadius: '12px', 
+              padding: '1.25rem'
+            }}>
+              {loadingTaskDetailsOnety ? (
+                <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                  Carregando documentos anexados...
+                </div>
+              ) : (() => {
+                const modalAnexos = [];
+                if (taskDetailsOnety && Array.isArray(taskDetailsOnety.anexos)) {
+                  for (const a of taskDetailsOnety.anexos) {
+                    modalAnexos.push({
+                      id: a.id,
+                      nome: a.nome || a.nome_arquivo || a.nomeArquivo || 'Documento sem nome',
+                      url: a.url || `/api/onety/anexo/${a.id}/download`,
+                      atividade: a.atividade || null
+                    });
+                  }
                 }
-              }
-              if (modalAnexos.length === 0 && taskDetailsOnety && Array.isArray(taskDetailsOnety.atividades)) {
-                for (const atv of taskDetailsOnety.atividades) {
-                  if (Array.isArray(atv.anexos)) {
-                    for (const a of atv.anexos) {
-                      modalAnexos.push({
-                        id: a.id,
-                        nome: a.nomeArquivo || a.nome_arquivo || a.nome || 'Documento sem nome',
-                        url: a.url || `/api/onety/anexo/${a.id}/download`,
-                        atividade: atv.texto || atv.nome || 'Trâmite'
-                      });
+                if (modalAnexos.length === 0 && taskDetailsOnety && Array.isArray(taskDetailsOnety.atividades)) {
+                  for (const atv of taskDetailsOnety.atividades) {
+                    if (Array.isArray(atv.anexos)) {
+                      for (const a of atv.anexos) {
+                        modalAnexos.push({
+                          id: a.id,
+                          nome: a.nomeArquivo || a.nome_arquivo || a.nome || 'Documento sem nome',
+                          url: a.url || `/api/onety/anexo/${a.id}/download`,
+                          atividade: atv.texto || atv.nome || 'Trâmite'
+                        });
+                      }
                     }
                   }
                 }
-              }
 
-              if (modalAnexos.length > 0) {
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                    {modalAnexos.map((a, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '600' }}>{a.nome}</span>
-                          {a.atividade && <span style={{ fontSize: '0.7rem', color: 'var(--accent-blue)', opacity: 0.9 }}>{a.atividade}</span>}
+                if (modalAnexos.length > 0) {
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                      {modalAnexos.map((a, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: '600' }}>{a.nome}</span>
+                            {a.atividade && <span style={{ fontSize: '0.7rem', color: 'var(--accent-blue)', opacity: 0.9 }}>{a.atividade}</span>}
+                          </div>
+                          <a 
+                            href={a.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={{ 
+                              padding: '6px 12px', 
+                              background: 'rgba(59, 130, 246, 0.15)', 
+                              color: 'var(--accent-blue)', 
+                              border: '1px solid rgba(59, 130, 246, 0.3)', 
+                              borderRadius: '6px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: '700',
+                              textDecoration: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ⬇ Baixar
+                          </a>
                         </div>
-                        <a 
-                          href={a.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          style={{ 
-                            padding: '6px 12px', 
-                            background: 'rgba(59, 130, 246, 0.15)', 
-                            color: 'var(--accent-blue)', 
-                            border: '1px solid rgba(59, 130, 246, 0.3)', 
-                            borderRadius: '6px', 
-                            fontSize: '0.75rem', 
-                            fontWeight: '700',
-                            textDecoration: 'none',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          ⬇ Baixar
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }
-
-              return (
-                <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  Nenhum arquivo anexado a esta tarefa.
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* Anotações Internas & Controle de Strikes / Acompanhamento */}
-        <div className="premium-section-box" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: 0 }}>
-          <div className="premium-section-title">
-            📝 Anotações Internas & Acompanhamento de Franqueados
-          </div>
-
-          {/* Quick Action Chips / Strikes */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginRight: '2px' }}>
-              Atalhos de Strike & Acompanhamento:
-            </span>
-            <button
-              type="button"
-              onClick={() => handleAddQuickNote('⚡ Strike 1 - Contatado franqueado sem retorno')}
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                background: 'rgba(234, 179, 8, 0.12)',
-                color: 'var(--accent-orange)',
-                border: '1px solid rgba(234, 179, 8, 0.3)',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-              className="hover-bright"
-            >
-              ⚡ Strike 1 (Sem retorno)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddQuickNote('⚡ Strike 2 - Cobrança pendente / Sem resposta')}
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                background: 'rgba(249, 115, 22, 0.12)',
-                color: '#f97316',
-                border: '1px solid rgba(249, 115, 22, 0.3)',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-              className="hover-bright"
-            >
-              ⚡ Strike 2 (2º Aviso)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddQuickNote('🚨 Strike 3 - Notificação final / Alerta de cancelamento')}
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                background: 'rgba(239, 68, 68, 0.15)',
-                color: 'var(--accent-red)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-              className="hover-bright"
-            >
-              🚨 Strike 3 (Crítico)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddQuickNote('⏳ Em análise - Necessário mais tempo para validação técnica')}
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                background: 'rgba(59, 130, 246, 0.12)',
-                color: 'var(--accent-blue)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-              className="hover-bright"
-            >
-              ⏳ Mais tempo de análise
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddQuickNote('📞 Franqueado contatado via WhatsApp / E-mail')}
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: 'var(--accent-green)',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-              className="hover-bright"
-            >
-              📞 Contatado Franqueado
-            </button>
-          </div>
-
-          {/* Form to add custom comment / note */}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-            <textarea
-              value={newNoteText}
-              onChange={(e) => setNewNoteText(e.target.value)}
-              placeholder="Escreva uma anotação interna (ex: motivo de espera, histórico com franqueado)..."
-              rows={2}
-              style={{
-                flex: 1,
-                background: 'rgba(0, 0, 0, 0.25)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '10px',
-                padding: '10px 12px',
-                color: '#fff',
-                fontSize: '0.85rem',
-                resize: 'vertical',
-                outline: 'none',
-                fontFamily: 'inherit'
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  handleAddCustomNote();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleAddCustomNote}
-              disabled={!newNoteText.trim()}
-              style={{
-                background: newNoteText.trim() ? 'var(--accent-blue)' : 'rgba(255, 255, 255, 0.05)',
-                color: newNoteText.trim() ? '#fff' : 'var(--text-muted)',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '0 16px',
-                fontWeight: '700',
-                fontSize: '0.8rem',
-                cursor: newNoteText.trim() ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                alignSelf: 'stretch',
-                transition: 'all 0.2s'
-              }}
-              className={newNoteText.trim() ? 'hover-bright' : ''}
-            >
-              <Send size={14} />
-              <span>Salvar</span>
-            </button>
-          </div>
-
-          {/* Internal Notes Feed / List */}
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.15)',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
-            borderRadius: '12px',
-            padding: '12px',
-            maxHeight: '260px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px'
-          }}>
-            {getInternalNotesList(metadataMap[selectedTask.id]?.observacoes || selectedTask.observacoes).length > 0 ? (
-              getInternalNotesList(metadataMap[selectedTask.id]?.observacoes || selectedTask.observacoes).map((note, idx) => {
-                const isStrike1 = (note.texto || '').includes('Strike 1');
-                const isStrike2 = (note.texto || '').includes('Strike 2');
-                const isStrike3 = (note.texto || '').includes('Strike 3');
-                const isAnalise = (note.texto || '').includes('Em análise');
-                
-                return (
-                  <div
-                    key={note.id || idx}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      padding: '8px 12px',
-                      background: isStrike3 
-                        ? 'rgba(239, 68, 68, 0.08)' 
-                        : isStrike2 
-                          ? 'rgba(249, 115, 22, 0.08)' 
-                          : isStrike1 
-                            ? 'rgba(234, 179, 8, 0.08)' 
-                            : isAnalise
-                              ? 'rgba(59, 130, 246, 0.08)'
-                              : 'rgba(255, 255, 255, 0.02)',
-                      borderRadius: '8px',
-                      border: `1px solid ${
-                        isStrike3 
-                          ? 'rgba(239, 68, 68, 0.25)' 
-                          : isStrike2 
-                            ? 'rgba(249, 115, 22, 0.25)' 
-                            : isStrike1 
-                              ? 'rgba(234, 179, 8, 0.25)' 
-                              : isAnalise
-                                ? 'rgba(59, 130, 246, 0.25)'
-                                : 'rgba(255, 255, 255, 0.04)'
-                      }`
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <strong style={{ fontSize: '0.75rem', color: 'var(--accent-blue)' }}>
-                          {note.autor || 'TI'}
-                        </strong>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                          {note.data_formatada || (note.data ? new Date(note.data).toLocaleString('pt-BR') : '')}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: '0.85rem', color: '#fff', margin: 0, lineHeight: '1.4', wordBreak: 'break-word' }}>
-                        {note.texto}
-                      </p>
+                      ))}
                     </div>
-                    {!isGuest && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteNote(idx)}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          padding: '4px',
-                          borderRadius: '4px',
-                          opacity: 0.6,
-                          transition: 'opacity 0.2s',
-                          marginLeft: '8px'
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--accent-red)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                        title="Remover anotação"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
+                  );
+                }
+
+                return (
+                  <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    Nenhum arquivo anexado a esta tarefa.
                   </div>
                 );
-              })
-            ) : (
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', opacity: 0.7, textAlign: 'center', padding: '1rem' }}>
-                Nenhuma anotação interna registrada para este cadastro. Use os atalhos ou campo acima para registrar strikes e observações.
-              </span>
-            )}
+              })()}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Anotações Internas & Controle de Strikes / Acompanhamento (Oculto para Collaborator) */}
+        {!isCollaborator && (
+          <div className="premium-section-box" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: 0 }}>
+            <div className="premium-section-title">
+              📝 Anotações Internas & Acompanhamento de Franqueados
+            </div>
+
+            {/* Quick Action Chips / Strikes */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginRight: '2px' }}>
+                Atalhos de Strike & Acompanhamento:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleAddQuickNote('⚡ Strike 1 - Contatado franqueado sem retorno')}
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: 'rgba(234, 179, 8, 0.12)',
+                  color: 'var(--accent-orange)',
+                  border: '1px solid rgba(234, 179, 8, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                ⚡ Strike 1 (Sem retorno)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddQuickNote('⚡ Strike 2 - Cobrança pendente / Sem resposta')}
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: 'rgba(249, 115, 22, 0.12)',
+                  color: '#f97316',
+                  border: '1px solid rgba(249, 115, 22, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                ⚡ Strike 2 (2º Aviso)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddQuickNote('🚨 Strike 3 - Notificação final / Alerta de cancelamento')}
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: 'var(--accent-red)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                🚨 Strike 3 (Crítico)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddQuickNote('⏳ Em análise - Necessário mais tempo para validação técnica')}
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: 'rgba(59, 130, 246, 0.12)',
+                  color: 'var(--accent-blue)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                ⏳ Mais tempo de análise
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddQuickNote('📞 Franqueado contatado via WhatsApp / E-mail')}
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: 'var(--accent-green)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                📞 Contatado Franqueado
+              </button>
+            </div>
+
+            {/* Form to add custom comment / note */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+              <textarea
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                placeholder="Escreva uma anotação interna (ex: motivo de espera, histórico com franqueado)..."
+                rows={2}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  resize: 'vertical',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    handleAddCustomNote();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomNote}
+                disabled={!newNoteText.trim()}
+                style={{
+                  background: newNoteText.trim() ? 'var(--accent-blue)' : 'rgba(255, 255, 255, 0.05)',
+                  color: newNoteText.trim() ? '#fff' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0 16px',
+                  fontWeight: '700',
+                  fontSize: '0.8rem',
+                  cursor: newNoteText.trim() ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  alignSelf: 'stretch',
+                  transition: 'all 0.2s'
+                }}
+                className={newNoteText.trim() ? 'hover-bright' : ''}
+              >
+                <Send size={14} />
+                <span>Salvar</span>
+              </button>
+            </div>
+
+            {/* Internal Notes Feed / List */}
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.15)',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              borderRadius: '12px',
+              padding: '12px',
+              maxHeight: '260px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              {getInternalNotesList(metadataMap[selectedTask.id]?.observacoes || selectedTask.observacoes).length > 0 ? (
+                getInternalNotesList(metadataMap[selectedTask.id]?.observacoes || selectedTask.observacoes).map((note, idx) => {
+                  const isStrike1 = (note.texto || '').includes('Strike 1');
+                  const isStrike2 = (note.texto || '').includes('Strike 2');
+                  const isStrike3 = (note.texto || '').includes('Strike 3');
+                  const isAnalise = (note.texto || '').includes('Em análise');
+                  
+                  return (
+                    <div
+                      key={note.id || idx}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        padding: '8px 12px',
+                        background: isStrike3 
+                          ? 'rgba(239, 68, 68, 0.08)' 
+                          : isStrike2 
+                            ? 'rgba(249, 115, 22, 0.08)' 
+                            : isStrike1 
+                              ? 'rgba(234, 179, 8, 0.08)' 
+                              : isAnalise
+                                ? 'rgba(59, 130, 246, 0.08)'
+                                : 'rgba(255, 255, 255, 0.02)',
+                        borderRadius: '8px',
+                        border: `1px solid ${
+                          isStrike3 
+                            ? 'rgba(239, 68, 68, 0.25)' 
+                            : isStrike2 
+                              ? 'rgba(249, 115, 22, 0.25)' 
+                              : isStrike1 
+                                ? 'rgba(234, 179, 8, 0.25)' 
+                                : isAnalise
+                                  ? 'rgba(59, 130, 246, 0.25)'
+                                  : 'rgba(255, 255, 255, 0.04)'
+                        }`
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <strong style={{ fontSize: '0.75rem', color: 'var(--accent-blue)' }}>
+                            {note.autor || 'TI'}
+                          </strong>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                            {note.data_formatada || (note.data ? new Date(note.data).toLocaleString('pt-BR') : '')}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.85rem', color: '#fff', margin: 0, lineHeight: '1.4', wordBreak: 'break-word' }}>
+                          {note.texto}
+                        </p>
+                      </div>
+                      {!isGuest && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteNote(idx)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            opacity: 0.6,
+                            transition: 'opacity 0.2s',
+                            marginLeft: '8px'
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--accent-red)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                          title="Remover anotação"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', opacity: 0.7, textAlign: 'center', padding: '1rem' }}>
+                  Nenhuma anotação interna registrada para este cadastro. Use os atalhos ou campo acima para registrar strikes e observações.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2114,14 +2128,16 @@ function App() {
                            <option value={500}>500+</option>
                          </select>
                       </div>
-                      <div className="tab-group" style={{ background: 'var(--bg-glass-subtle, rgba(255,255,255,0.03))', padding: '6px' }}>
-                        <button className={`tab-btn ${queueFilter === 'pendentes' ? 'active' : ''}`} onClick={() => setQueueFilter('pendentes')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>⏳ PENDENTES</button>
-                        <button className={`tab-btn ${queueFilter === 'atrasados' ? 'active' : ''}`} onClick={() => setQueueFilter('atrasados')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>⚠️ ATRASADOS</button>
-                        <button className={`tab-btn ${queueFilter === 'backoffice' ? 'active' : ''}`} onClick={() => setQueueFilter('backoffice')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>⚙️ BACKOFFICE</button>
-                        <button className={`tab-btn ${queueFilter === 'concluidos' ? 'active' : ''}`} onClick={() => setQueueFilter('concluidos')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>✔️ CONCLUÍDOS</button>
-                        <button className={`tab-btn ${queueFilter === 'cancelados' ? 'active' : ''}`} onClick={() => setQueueFilter('cancelados')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>❌ CANCELADOS</button>
-                        <button className={`tab-btn ${queueFilter === 'geral' ? 'active' : ''}`} onClick={() => setQueueFilter('geral')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>📦 GERAL</button>
-                      </div>
+                      {!isCollaborator && (
+                        <div className="tab-group" style={{ background: 'var(--bg-glass-subtle, rgba(255,255,255,0.03))', padding: '6px' }}>
+                          <button className={`tab-btn ${queueFilter === 'pendentes' ? 'active' : ''}`} onClick={() => setQueueFilter('pendentes')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>⏳ PENDENTES</button>
+                          <button className={`tab-btn ${queueFilter === 'atrasados' ? 'active' : ''}`} onClick={() => setQueueFilter('atrasados')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>⚠️ ATRASADOS</button>
+                          <button className={`tab-btn ${queueFilter === 'backoffice' ? 'active' : ''}`} onClick={() => setQueueFilter('backoffice')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>⚙️ BACKOFFICE</button>
+                          <button className={`tab-btn ${queueFilter === 'concluidos' ? 'active' : ''}`} onClick={() => setQueueFilter('concluidos')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>✔️ CONCLUÍDOS</button>
+                          <button className={`tab-btn ${queueFilter === 'cancelados' ? 'active' : ''}`} onClick={() => setQueueFilter('cancelados')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>❌ CANCELADOS</button>
+                          <button className={`tab-btn ${queueFilter === 'geral' ? 'active' : ''}`} onClick={() => setQueueFilter('geral')} style={{ fontSize: '0.75rem', padding: '10px 20px' }}>📦 GERAL</button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2188,9 +2204,13 @@ function App() {
                           layout
                           initial={{ opacity: 0, scale: 0.98 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className={`task-item ${d.status === 'atrasada' && !isCancelled ? 'pulse' : ''}`}
+                          className={`task-item ${(!isCollaborator && d.status === 'atrasada' && !isCancelled) ? 'pulse' : ''}`}
                           onClick={() => setSelectedTask(d)}
-                          style={{ position: 'relative', overflow: 'hidden' }}
+                          style={{ 
+                            position: 'relative', 
+                            overflow: 'hidden',
+                            ...(isCollaborator ? { borderColor: 'var(--border-light)' } : {})
+                          }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                             <div style={{ flex: 1 }}>
@@ -2244,15 +2264,17 @@ function App() {
                               )}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                              <span className={`task-badge ${(d.status || '').startsWith('concluida') ? 'badge-green' : d.status === 'atrasada' ? 'badge-red' : 'badge-orange'}`}>
-                                {(d.status || '').replace(/_/g, ' ').toUpperCase()} {d.status === 'atrasada' && `(${delay}D)`}
-                              </span>
-                              {isCancelled && (
+                              {!isCollaborator && (
+                                <span className={`task-badge ${(d.status || '').startsWith('concluida') ? 'badge-green' : d.status === 'atrasada' ? 'badge-red' : 'badge-orange'}`}>
+                                  {(d.status || '').replace(/_/g, ' ').toUpperCase()} {d.status === 'atrasada' && `(${delay}D)`}
+                                </span>
+                              )}
+                              {!isCollaborator && isCancelled && (
                                 <span className="task-badge badge-red" style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}>
                                   ❌ CANCELADO
                                 </span>
                               )}
-                              {isBackoffice && (
+                              {!isCollaborator && isBackoffice && (
                                 <span className="task-badge badge-purple" style={{ background: 'rgba(139, 92, 246, 0.2)', border: '1px solid var(--accent-purple)', color: 'var(--accent-purple)' }}>
                                   ⚙️ BACKOFFICE
                                 </span>

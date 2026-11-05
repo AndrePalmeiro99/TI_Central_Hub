@@ -459,7 +459,7 @@ function App() {
       
       // Determina colaborador com base no cadastro do usuário conectado
       const sessionUser = session?.user;
-      let assignedColab = sessionUser?.full_name || sessionUser?.name || selectedTask?.colaborador || 'Pedro (CF-TI)';
+      let assignedColab = sessionUser?.full_name || sessionUser?.name || selectedTask?.colaborador || 'Central TI';
       if (assignedColab.includes('@')) {
         const emailLower = assignedColab.toLowerCase();
         if (emailLower.includes('pedro')) assignedColab = 'Pedro (CF-TI)';
@@ -1068,20 +1068,35 @@ function App() {
 
           <div className="premium-chips-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
             {/* CNPJ Chip */}
-            <div 
-              className="premium-chip"
-              onClick={() => {
-                navigator.clipboard.writeText(selectedTask.cnpj);
-                setCopyToast('modal');
-                setTimeout(() => setCopyToast(null), 2000);
-              }}
-              style={{ cursor: 'pointer' }}
-              title="Clique para copiar o CNPJ"
-            >
-              <span>CNPJ:</span>
-              <strong>{selectedTask.cnpj}</strong>
-              {copyToast === 'modal' ? <CheckCircle2 size={12} color="var(--accent-green)" /> : <Copy size={12} color="var(--accent-blue)" />}
-            </div>
+            {(() => {
+              const formatCnpjVal = (val) => {
+                if (!val || val === 'N/A') return 'N/A';
+                const c = String(val).replace(/\D/g, '');
+                if (c.length === 14) return c.slice(0,2) + '.' + c.slice(2,5) + '.' + c.slice(5,8) + '/' + c.slice(8,12) + '-' + c.slice(12,14);
+                if (c.length === 11) return c.slice(0,3) + '.' + c.slice(3,6) + '.' + c.slice(6,9) + '-' + c.slice(9,11);
+                return val;
+              };
+              const displayCnpj = (selectedTask.cnpj && selectedTask.cnpj !== 'N/A')
+                ? selectedTask.cnpj
+                : formatCnpjVal(taskDetailsOnety?.clienteCnpjCpf || taskDetailsOnety?.cnpj || taskDetailsOnety?.cliente_cnpj || taskDetailsOnety?.cliente?.cnpjCpf);
+
+              return (
+                <div 
+                  className="premium-chip"
+                  onClick={() => {
+                    navigator.clipboard.writeText(displayCnpj);
+                    setCopyToast('modal');
+                    setTimeout(() => setCopyToast(null), 2000);
+                  }}
+                  style={{ cursor: 'pointer' }}
+                  title="Clique para copiar o CNPJ"
+                >
+                  <span>CNPJ:</span>
+                  <strong>{displayCnpj}</strong>
+                  {copyToast === 'modal' ? <CheckCircle2 size={12} color="var(--accent-green)" /> : <Copy size={12} color="var(--accent-blue)" />}
+                </div>
+              );
+            })()}
 
             {/* CÓD Chip */}
             {isEditingCodigo ? (
@@ -2241,11 +2256,7 @@ function App() {
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', flexWrap: 'wrap', gap: '10px' }}>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                              <User size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={d.colaborador}>{d.colaborador}</span>
-                            </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', flexWrap: 'wrap', gap: '10px' }}>
                             {needsContrato ? (
                               <motion.div 
                                 whileHover={{ scale: 1.05 }}

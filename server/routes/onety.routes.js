@@ -11,6 +11,9 @@ import { authenticateTokenOptional } from '../middleware/auth.js';
 export function createOnetyRouter() {
   const router = Router();
 
+  // Cache em memória para CNPJ e detalhes de tarefas do Onety
+  const taskCnpjCache = new Map();
+
   // Tarefas completas Processo 62
   router.get('/onety/tarefas-completas', async (req, res) => {
     try {
@@ -26,34 +29,75 @@ export function createOnetyRouter() {
         if (resp.ok) {
           const rawTasks = await resp.json();
           if (Array.isArray(rawTasks)) {
-            const normalized = rawTasks.map(t => ({
-              id: t.id,
-              assunto: t.assunto || 'CADASTRO DA EMPRESA',
-              descricao: t.descricao || '',
-              empresa_id: t.empresa_id || 23,
-              empresa: {
-                nome: t.cliente_nome || t.empresa_nome || 'N/A',
-                cnpj: t.cnpj || t.cliente_cnpj || null,
-                valor_mrr: null,
-                honorario: null
-              },
-              cliente: {
-                id: t.cliente_id,
-                nome: t.cliente_nome || 'N/A',
-                cnpj: t.cnpj || t.cliente_cnpj || null,
-                valor_mrr: null,
-                honorario: null
-              },
-              franqueado: t.empresa_abriu_processo_nome || t.empresa_nome || 'Matriz',
-              data_prazo: t.data_prazo,
-              data_criacao: t.criado_em,
-              data_conclusao: t.data_conclusao,
-              status: t.status === 'concluída' ? 'concluida_no_prazo' : (t.status || 'pendente'),
-              comentarios_count: 0,
-              anexos_count: 0,
-              tarefa_pai_id: t.tarefa_pai_id || null,
-              pr_id: t.tarefa_pai_id || null
+            // Para tarefas em aberto, busca CNPJ detalhado e responsável do Onety
+            const openTasks = rawTasks.filter(t => t.status !== 'concluída');
+            await Promise.all(openTasks.map(async (t) => {
+              if (taskCnpjCache.has(t.id)) {
+                const cached = taskCnpjCache.get(t.id);
+                t.cliente_cnpj = cached.cnpj;
+                t.cnpj = cached.cnpj;
+                if (cached.responsavel_nome) t.responsavel_nome = cached.responsavel_nome;
+                return;
+              }
+              try {
+                const r = await fetch(`${ONETY_BACKEND_URL}/gestao/tarefas/${t.id}`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Empresa-Id': ONETY_EMPRESA_ID,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                if (r.ok) {
+                  const detail = await r.json();
+                  const foundCnpj = detail.clienteCnpjCpf || detail.cliente?.cnpjCpf || null;
+                  const foundResp = detail.responsavelNome || detail.responsavel?.nome || null;
+                  taskCnpjCache.set(t.id, { cnpj: foundCnpj, responsavel_nome: foundResp });
+                  t.cliente_cnpj = foundCnpj;
+                  t.cnpj = foundCnpj;
+                  if (foundResp) t.responsavel_nome = foundResp;
+                }
+              } catch (_) {}
             }));
+
+            const normalized = rawTasks.map(t => {
+              // Extrai CNPJ direto do campo ou tenta padrão 00.000.000/0001-00 do nome
+              let foundCnpj = t.cnpj || t.cliente_cnpj || null;
+              if (!foundCnpj && t.cliente_nome) {
+                const matchCnpj = t.cliente_nome.match(/^(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/);
+                if (matchCnpj) foundCnpj = matchCnpj[1];
+              }
+
+              return {
+                id: t.id,
+                assunto: t.assunto || 'CADASTRO DA EMPRESA',
+                descricao: t.descricao || '',
+                empresa_id: t.empresa_id || 23,
+                empresa: {
+                  nome: t.cliente_nome || t.empresa_nome || 'N/A',
+                  cnpj: foundCnpj,
+                  valor_mrr: null,
+                  honorario: null
+                },
+                cliente: {
+                  id: t.cliente_id,
+                  nome: t.cliente_nome || 'N/A',
+                  cnpj: foundCnpj,
+                  valor_mrr: null,
+                  honorario: null
+                },
+                franqueado: t.empresa_abriu_processo_nome || t.empresa_nome || 'Matriz',
+                responsavel: t.responsavel_nome ? { nome: t.responsavel_nome } : null,
+                responsavel_nome: t.responsavel_nome || null,
+                data_prazo: t.data_prazo,
+                data_criacao: t.criado_em,
+                data_conclusao: t.data_conclusao,
+                status: t.status === 'concluída' ? 'concluida_no_prazo' : (t.status || 'pendente'),
+                comentarios_count: 0,
+                anexos_count: 0,
+                tarefa_pai_id: t.tarefa_pai_id || null,
+                pr_id: t.tarefa_pai_id || null
+              };
+            });
             return res.json(normalized);
           }
         }
@@ -262,8 +306,12 @@ export function createOnetyRouter() {
         }
       }
 
+      const finalCnpj = mainTask.clienteCnpjCpf || mainTask.cliente?.cnpjCpf || mainTask.cnpj || null;
+
       res.json({
         ...mainTask,
+        cnpj: finalCnpj,
+        cliente_cnpj: finalCnpj,
         pr_id: prId,
         pr_task: prTask,
         tem_contrato_anexado: hasContratoAnexado,

@@ -806,10 +806,19 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
       }, {});
 
       if (onetyData) {
+        const formatCnpjVal = (val) => {
+          if (!val || val === 'N/A') return 'N/A';
+          const c = String(val).replace(/\D/g, '');
+          if (c.length === 14) return c.slice(0,2) + '.' + c.slice(2,5) + '.' + c.slice(5,8) + '/' + c.slice(8,12) + '-' + c.slice(12,14);
+          if (c.length === 11) return c.slice(0,3) + '.' + c.slice(3,6) + '.' + c.slice(6,9) + '-' + c.slice(9,11);
+          return val;
+        };
+
         const normalized = onetyData.map(t => {
           const status = classifyTask(t);
-          const taskCnpj = t.empresa?.cnpj || t.empresa?.identificador;
-          const transInfo = transbordoMap[taskCnpj] || {};
+          const rawCnpj = t.cnpj || t.cliente_cnpj || t.empresa?.cnpj || t.cliente?.cnpj || t.empresa?.identificador || null;
+          const taskCnpj = formatCnpjVal(rawCnpj);
+          const transInfo = transbordoMap[rawCnpj] || transbordoMap[taskCnpj] || {};
 
           const franquiaUpper = (t.franqueado || 'Matriz').toUpperCase();
           
@@ -870,8 +879,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
              }
           }
 
-          let resp = t.responsavel?.nome || 'Pedro (CF-TI)';
-          if (resp.toLowerCase().includes('gerente')) resp = 'Pedro (CF-TI)';
+          let resp = t.responsavel_nome || t.responsavel?.nome || 'Central TI';
+          if (resp.toLowerCase().includes('gerente')) resp = 'Central TI';
 
           const metaRow = metaMap[t.id] || {};
           const manualEmpresaCodigo = metaRow.empresa_codigo;

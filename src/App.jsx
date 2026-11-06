@@ -875,7 +875,7 @@ function App() {
     return (
       <div style={{ display: 'grid', gap: '1.5rem' }}>
         {/* Impedimento de Contrato Alert (Red Block Banner) */}
-        {needsContrato && !rawContrato && (
+        {!isCollaborator && needsContrato && !rawContrato && (
           <div style={{ 
             background: 'rgba(239, 68, 68, 0.15)', 
             border: '2px solid var(--accent-red)', 
@@ -1206,8 +1206,8 @@ function App() {
               <strong>{selectedTask.cadastrado_por || 'Onety'}</strong>
             </div>
 
-            {/* Contrato Status Button Chip */}
-            {needsContrato ? (
+            {/* Contrato Status Button Chip (Oculto para Collaborator) */}
+            {isCollaborator ? null : needsContrato ? (
               <div 
                 className="premium-chip hover-bright"
                 onClick={() => !isGuest && handleToggleContrato(selectedTask.id)}
@@ -1255,7 +1255,8 @@ function App() {
               </div>
             )}
 
-            {/* Backoffice Status Toggle Chip */}
+            {/* Backoffice Status Toggle Chip (Oculto para Collaborator) */}
+            {!isCollaborator && (
             <div 
               className="premium-chip hover-bright"
               onClick={() => !isGuest && handleToggleBackoffice(selectedTask.id)}
@@ -1280,6 +1281,7 @@ function App() {
                 {isBackoffice ? '⚙️ BACKOFFICE' : 'NÃO BACKOFFICE'}
               </strong>
             </div>
+            )}
 
 
           </div>
@@ -2276,6 +2278,7 @@ function App() {
                             </div>
                           </div>
 
+                          {!isCollaborator && (
                           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', flexWrap: 'wrap', gap: '10px' }}>
                             {needsContrato ? (
                               <motion.div 
@@ -2331,6 +2334,7 @@ function App() {
                               </div>
                             )}
                           </div>
+                          )}
                         </motion.div>
                       );
                     })}

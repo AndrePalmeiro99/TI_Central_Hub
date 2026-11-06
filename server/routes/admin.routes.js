@@ -270,23 +270,32 @@ export function createAdminRouter({ pool, memoryStore }) {
   });
 
   // Bases Management
+  // Mapeamento franquia -> base persistido em franchise_royalties_config (base_assigned)
   router.get('/admin/ti/bases', authenticateToken, async (req, res) => {
     try {
-      const result = await pool.query('SELECT * FROM franchise_bases ORDER BY id ASC');
+      const result = await pool.query(
+        'SELECT id, franchise_name, base_assigned, updated_at FROM franchise_royalties_config ORDER BY franchise_name ASC'
+      );
       res.json(result.rows);
     } catch (err) {
-      console.warn('Tabela franchise_bases não existe, retornando vazio:', err.message);
+      console.warn('Erro ao buscar mapeamento de bases:', err.message);
       res.json([]);
     }
   });
 
   router.post('/admin/ti/bases', authenticateToken, requireAdmin, async (req, res) => {
-    const { code, name, city, state, system, database_name } = req.body;
+    const franchise_name = (req.body?.franchise_name || '').trim().toUpperCase();
+    const base_assigned = req.body?.base_assigned || null;
+    if (!franchise_name) return res.status(400).json({ error: 'franchise_name obrigatório.' });
     try {
       const result = await pool.query(
-        `INSERT INTO franchise_bases (code, name, city, state, system, database_name)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [code, name, city, state, system, database_name]
+        `INSERT INTO franchise_royalties_config (franchise_name, base_assigned, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (franchise_name) DO UPDATE SET
+           base_assigned = EXCLUDED.base_assigned,
+           updated_at = NOW()
+         RETURNING id, franchise_name, base_assigned, updated_at`,
+        [franchise_name, base_assigned]
       );
       res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -295,9 +304,14 @@ export function createAdminRouter({ pool, memoryStore }) {
   });
 
   router.delete('/admin/ti/bases', authenticateToken, requireAdmin, async (req, res) => {
-    const { id } = req.body;
+    const id = req.query?.id || req.body?.id;
+    if (!id) return res.status(400).json({ error: 'id obrigatório.' });
     try {
-      await pool.query('DELETE FROM franchise_bases WHERE id = $1', [id]);
+      // Não remove a linha (preserva dados de royalties); apenas desvincula a base
+      await pool.query(
+        `UPDATE franchise_royalties_config SET base_assigned = 'Sem Base', updated_at = NOW() WHERE id = $1`,
+        [id]
+      );
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message });

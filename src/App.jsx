@@ -609,17 +609,10 @@ function App() {
   };
 
   const userEmail = session?.user?.email?.toLowerCase() || '';
-  const isAdminEmail = userEmail === 'pedro@cfcontabilidade.com' || 
-                       userEmail === 'pedro.freitas@cffranquias.com.br' ||
-                       userEmail === 'andre@cfcontabilidade.com' || 
-                       userEmail === 'andre.palmeiro@cffranquias.com.br' ||
-                       userEmail === 'gabriel@cfcontabilidade.com' ||
-                       userEmail === 'gabriel.rozzato@cffranquias.com.br';
-
-  const userRole = session?.user?.user_metadata?.role || 'guest';
+  const userRole = session?.user?.user_metadata?.role || session?.user?.role || 'guest';
   // Felipe (TI) é o Gerente Supremo pelo e-mail ou pela role
   const isManager = userEmail === 'ti@cfcontabilidade.com' || userRole === 'manager';
-  const isAdmin = isAdminEmail || userRole === 'administrator' || userRole === 'admin';
+  const isAdmin = userRole === 'administrator' || userRole === 'admin';
   const isCollaborator = !isManager && !isAdmin && userRole === 'collaborator';
   const isGuest = userRole === 'guest';
   const isAuthorized = isManager || isAdmin || userRole === 'collaborator';
@@ -680,8 +673,9 @@ function App() {
         const isBackoffice = backofficeMap[d.id] !== undefined ? backofficeMap[d.id] : d.is_backoffice === true;
 
         if (isCollaborator) {
-          // Na visão de colaborador, mostra todas as empresas da mesma forma
-          return true;
+          // Na visão de colaborador, mostra apenas empresas com CÓD informado (preenchido por manager/admin)
+          const cod = metadataMap[d.id]?.empresa_codigo || d.empresa_codigo;
+          return !!cod && cod !== 'N/A' && String(cod).trim() !== '';
         }
 
         if (isCancelled) {
@@ -1107,7 +1101,7 @@ function App() {
             })()}
 
             {/* CÓD Chip */}
-            {isEditingCodigo ? (
+            {!isCollaborator && isEditingCodigo ? (
               <div className="premium-chip no-hover" style={{ padding: '4px 8px' }}>
                 <span>CÓD:</span>
                 <input 
@@ -1143,13 +1137,13 @@ function App() {
             ) : (
               <div 
                 className="premium-chip"
-                onClick={() => !isGuest && setIsEditingCodigo(true)}
-                style={{ cursor: isGuest ? 'default' : 'pointer' }}
-                title={isGuest ? '' : 'Clique para alterar o código'}
+                onClick={() => !isGuest && !isCollaborator && setIsEditingCodigo(true)}
+                style={{ cursor: (isGuest || isCollaborator) ? 'default' : 'pointer' }}
+                title={(isGuest || isCollaborator) ? '' : 'Clique para alterar o código'}
               >
                 <span>CÓD:</span>
                 <strong style={{ color: 'var(--accent-blue)' }}>{metadataMap[selectedTask.id]?.empresa_codigo || selectedTask.empresa_codigo || 'N/A'}</strong>
-                {!isGuest && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', fontWeight: 'normal' }}>(Editar)</span>}
+                {!isGuest && !isCollaborator && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', fontWeight: 'normal' }}>(Editar)</span>}
               </div>
             )}
 

@@ -363,15 +363,24 @@ export function createOnetyProxy() {
   const router = Router();
   router.use('/', authenticateTokenOptional, async (req, res) => {
     try {
-      const bearerToken = await getOnetyBearerToken();
       const targetUrl = `${ONETY_BACKEND_URL}${req.url}`;
       const headers = { 'Content-Type': 'application/json' };
 
-      if (bearerToken) {
-        headers['Authorization'] = `Bearer ${bearerToken}`;
-        headers['X-Empresa-Id'] = ONETY_EMPRESA_ID;
-      } else if (ONETY_API_KEY) {
+      // Endpoints externos exigem estritamente x-api-key
+      const isExternalEndpoint = req.url.includes('-externo') || req.url.includes('/externo');
+
+      if (isExternalEndpoint && ONETY_API_KEY) {
         headers['x-api-key'] = ONETY_API_KEY;
+        headers['X-Empresa-Id'] = ONETY_EMPRESA_ID;
+      } else {
+        const bearerToken = await getOnetyBearerToken();
+        if (bearerToken) {
+          headers['Authorization'] = `Bearer ${bearerToken}`;
+          headers['X-Empresa-Id'] = ONETY_EMPRESA_ID;
+        } else if (ONETY_API_KEY) {
+          headers['x-api-key'] = ONETY_API_KEY;
+          headers['X-Empresa-Id'] = ONETY_EMPRESA_ID;
+        }
       }
 
       const fetchOptions = {

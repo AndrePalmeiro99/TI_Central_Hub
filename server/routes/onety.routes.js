@@ -29,9 +29,9 @@ export function createOnetyRouter() {
         if (resp.ok) {
           const rawTasks = await resp.json();
           if (Array.isArray(rawTasks)) {
-            // Para tarefas em aberto, busca CNPJ detalhado e responsável do Onety
-            const openTasks = rawTasks.filter(t => t.status !== 'concluída');
-            await Promise.all(openTasks.map(async (t) => {
+            // Busca CNPJ detalhado e responsável do Onety para tarefas em aberto ou tarefas concluídas recentes/sem cache
+            const tasksToFetch = rawTasks.slice(0, 30);
+            await Promise.all(tasksToFetch.map(async (t) => {
               if (taskCnpjCache.has(t.id)) {
                 const cached = taskCnpjCache.get(t.id);
                 t.cliente_cnpj = cached.cnpj;

@@ -816,7 +816,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
 
         const normalized = onetyData.map(t => {
           const status = classifyTask(t);
-          const rawCnpj = t.cnpj || t.cliente_cnpj || t.empresa?.cnpj || t.cliente?.cnpj || t.empresa?.identificador || null;
+          const metaRow = metaMap[t.id] || {};
+          const rawCnpj = metaRow.cnpj || t.cnpj || t.cliente_cnpj || t.empresa?.cnpj || t.cliente?.cnpj || t.empresa?.identificador || null;
           const taskCnpj = formatCnpjVal(rawCnpj);
           const transInfo = transbordoMap[rawCnpj] || transbordoMap[taskCnpj] || {};
 
@@ -882,7 +883,6 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
           let resp = t.responsavel_nome || t.responsavel?.nome || 'Central TI';
           if (resp.toLowerCase().includes('gerente')) resp = 'Central TI';
 
-          const metaRow = metaMap[t.id] || {};
           const manualEmpresaCodigo = metaRow.empresa_codigo;
           const manualObservacoes = metaRow.observacoes;
           const manualFranquia = metaRow.franquia_override;

@@ -18,6 +18,7 @@ export function createMetadataRouter({ pool, memoryStore }) {
     const {
       id,
       empresa_codigo,
+      cnpj,
       observacoes,
       contrato_aceite,
       franquia_override,
@@ -33,27 +34,29 @@ export function createMetadataRouter({ pool, memoryStore }) {
     try {
       const result = await pool.query(
         `INSERT INTO tarefa_metadata (
-          id, empresa_codigo, observacoes, contrato_aceite, franquia_override,
+          id, empresa_codigo, cnpj, observacoes, contrato_aceite, franquia_override,
           sistema_override, detalhe_base_override, honorario, is_backoffice, is_cancelled,
           colaborador_override, status_override, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
         ON CONFLICT (id) DO UPDATE SET
-          empresa_codigo = EXCLUDED.empresa_codigo,
-          observacoes = EXCLUDED.observacoes,
-          contrato_aceite = EXCLUDED.contrato_aceite,
-          franquia_override = EXCLUDED.franquia_override,
-          sistema_override = EXCLUDED.sistema_override,
-          detalhe_base_override = EXCLUDED.detalhe_base_override,
-          honorario = EXCLUDED.honorario,
-          is_backoffice = EXCLUDED.is_backoffice,
-          is_cancelled = EXCLUDED.is_cancelled,
-          colaborador_override = EXCLUDED.colaborador_override,
-          status_override = EXCLUDED.status_override,
+          empresa_codigo = COALESCE(EXCLUDED.empresa_codigo, tarefa_metadata.empresa_codigo),
+          cnpj = COALESCE(EXCLUDED.cnpj, tarefa_metadata.cnpj),
+          observacoes = COALESCE(EXCLUDED.observacoes, tarefa_metadata.observacoes),
+          contrato_aceite = COALESCE(EXCLUDED.contrato_aceite, tarefa_metadata.contrato_aceite),
+          franquia_override = COALESCE(EXCLUDED.franquia_override, tarefa_metadata.franquia_override),
+          sistema_override = COALESCE(EXCLUDED.sistema_override, tarefa_metadata.sistema_override),
+          detalhe_base_override = COALESCE(EXCLUDED.detalhe_base_override, tarefa_metadata.detalhe_base_override),
+          honorario = COALESCE(EXCLUDED.honorario, tarefa_metadata.honorario),
+          is_backoffice = COALESCE(EXCLUDED.is_backoffice, tarefa_metadata.is_backoffice),
+          is_cancelled = COALESCE(EXCLUDED.is_cancelled, tarefa_metadata.is_cancelled),
+          colaborador_override = COALESCE(EXCLUDED.colaborador_override, tarefa_metadata.colaborador_override),
+          status_override = COALESCE(EXCLUDED.status_override, tarefa_metadata.status_override),
           updated_at = NOW()
         RETURNING *`,
         [
           id,
           empresa_codigo,
+          cnpj,
           observacoes,
           contrato_aceite,
           franquia_override,
@@ -72,6 +75,7 @@ export function createMetadataRouter({ pool, memoryStore }) {
       memoryStore.tarefa_metadata[id] = {
         id,
         empresa_codigo,
+        cnpj,
         observacoes,
         contrato_aceite,
         franquia_override,

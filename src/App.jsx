@@ -862,14 +862,17 @@ function App() {
       return null;
     })();
 
+    // Status de contrato alinhado 100% com o card
+    const cardContratoStatus = contratoMap[selectedTask.id] !== undefined
+      ? contratoMap[selectedTask.id]
+      : (metadataMap[selectedTask.id]?.contrato_aceite !== undefined
+          ? metadataMap[selectedTask.id].contrato_aceite === true
+          : (selectedTask.contrato_aceite !== undefined ? selectedTask.contrato_aceite : !isPending));
+
     // Se detectou anexo no trâmite de Aceite direto da API, prioridade máxima: COM CONTRATO
     const rawContrato = isAceiteFromDetails !== null
       ? isAceiteFromDetails
-      : (metadataMap[selectedTask.id]?.contrato_aceite !== undefined
-          ? metadataMap[selectedTask.id].contrato_aceite === true
-          : (contratoMap[selectedTask.id] !== undefined
-              ? contratoMap[selectedTask.id]
-              : (detectedContrato !== null ? detectedContrato : (selectedTask.contrato_aceite !== undefined ? selectedTask.contrato_aceite : !isPending))));
+      : cardContratoStatus;
     const hasContrato = !needsContrato || rawContrato;
 
     return (
@@ -1512,8 +1515,16 @@ function App() {
               padding: '1.25rem'
             }}>
               {loadingTaskDetailsOnety ? (
-                <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
-                  Carregando documentos anexados...
+                <div style={{ textAlign: 'center', padding: '1.25rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                  {rawContrato ? (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--accent-green)', fontWeight: '700', fontSize: '0.85rem' }}>
+                      <CheckCircle2 size={16} /> Contrato de aceite identificado no processo • Carregando documentos anexados...
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.85rem' }}>
+                      Carregando documentos anexados...
+                    </div>
+                  )}
                 </div>
               ) : (() => {
                 const modalAnexos = [];

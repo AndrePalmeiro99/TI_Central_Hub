@@ -8,7 +8,7 @@ import {
 } from '../services/onetyService.js';
 import { authenticateTokenOptional } from '../middleware/auth.js';
 
-export function createOnetyRouter() {
+export function createOnetyRouter({ pool } = {}) {
   const router = Router();
 
   // Cache em memória para CNPJ e detalhes de tarefas do Onety
@@ -29,8 +29,17 @@ export function createOnetyRouter() {
         if (resp.ok) {
           const rawTasks = await resp.json();
           if (Array.isArray(rawTasks)) {
-            // Busca CNPJ detalhado e responsável do Onety para tarefas em aberto ou tarefas concluídas recentes/sem cache
-            const tasksToFetch = rawTasks.slice(0, 30);
+            // 1. Coleta tarefas pendentes (que ficam no topo da fila e sempre precisam de CNPJ)
+            const openTasks = rawTasks.filter(t => t.status !== 'concluída');
+            // 2. Coleta as tarefas mais recentes do array
+            const recentTasks = rawTasks.slice(-30);
+            
+            // Agrupa tarefas prioritárias sem duplicar
+            const priorityTasksMap = new Map();
+            openTasks.forEach(t => priorityTasksMap.set(t.id, t));
+            recentTasks.forEach(t => priorityTasksMap.set(t.id, t));
+            const tasksToFetch = Array.from(priorityTasksMap.values());
+
             await Promise.all(tasksToFetch.map(async (t) => {
               if (taskCnpjCache.has(t.id)) {
                 const cached = taskCnpjCache.get(t.id);
@@ -55,6 +64,18 @@ export function createOnetyRouter() {
                   t.cliente_cnpj = foundCnpj;
                   t.cnpj = foundCnpj;
                   if (foundResp) t.responsavel_nome = foundResp;
+
+                  // Auto-grava no banco para persistir
+                  if (foundCnpj) {
+                    pool.query(
+                      `INSERT INTO tarefa_metadata (id, cnpj, updated_at)
+                       VALUES ($1, $2, NOW())
+                       ON CONFLICT (id) DO UPDATE SET
+                         cnpj = COALESCE(tarefa_metadata.cnpj, EXCLUDED.cnpj),
+                         updated_at = NOW()`,
+                      [String(t.id), String(foundCnpj).trim()]
+                    ).catch(() => {});
+                  }
                 }
               } catch (_) {}
             }));

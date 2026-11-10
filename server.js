@@ -111,7 +111,7 @@ app.use('/api/auth', createAuthRouter({ pool, smtpTransporter, memoryStore, PORT
 app.use('/api/lgpd', createLgpdRouter({ pool }));
 app.use('/api', createAdminRouter({ pool, memoryStore }));
 app.use('/api', createMetadataRouter({ pool, memoryStore }));
-app.use('/api', createOnetyRouter());
+app.use('/api', createOnetyRouter({ pool }));
 app.use('/onety-proxy', createOnetyProxy());
 
 // Servir frontend compilado em produção

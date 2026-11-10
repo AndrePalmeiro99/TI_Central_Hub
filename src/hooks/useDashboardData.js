@@ -262,7 +262,8 @@ export function useDashboardData(session, autoRefreshEnabled = true) {
     const shouldAwardPoint = hasValidCodigo && isPending;
 
     const patch = {
-      empresa_codigo: nextCodigo === 'N/A' ? null : nextCodigo
+      empresa_codigo: nextCodigo === 'N/A' ? null : nextCodigo,
+      ...(task?.cnpj && task.cnpj !== 'N/A' ? { cnpj: task.cnpj } : {})
     };
 
     if (shouldAwardPoint) {
